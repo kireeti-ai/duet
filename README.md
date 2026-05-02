@@ -364,14 +364,6 @@ DUET is structured for:
 
 ---
 
-## Resume Impact
-
-```text
-Built DUET, a contradiction-aware dual-path RAG system for biomedical scientific claim verification. Designed original retrieval balance metrics (Support Recall, Contradiction Recall, Balance Score), compared multiple chunking and retrieval architectures on SciFact, and deployed a full research-grade pipeline with LangSmith, W&B, Docker, and Hugging Face Spaces.
-```
-
----
-
 ## Future Extensions
 
 * Full PubMed live indexing
