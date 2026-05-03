@@ -1,379 +1,284 @@
-# DUET
+# Equipoise
 
-<p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python">
-  <img src="https://img.shields.io/badge/frontend-Streamlit-red" alt="Frontend">
-  <img src="https://img.shields.io/badge/backend-FastAPI-green" alt="Backend">
-  <img src="https://img.shields.io/badge/llm-Groq%20%7C%20Ollama-purple" alt="LLM">
-  <img src="https://img.shields.io/badge/vectorDB-ChromaDB-orange" alt="VectorDB">
-  <img src="https://img.shields.io/badge/retrieval-BM25%20%7C%20Hybrid-yellow" alt="Retrieval">
-  <img src="https://img.shields.io/badge/deployment-HuggingFace%20Spaces-teal" alt="Deployment">
-</p>
+**Biomedical Scientific Claim Verification using Retrieval-Augmented Generation**
+
+[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![HuggingFace](https://img.shields.io/badge/Demo-HuggingFace%20Spaces-yellow)](https://huggingface.co/spaces/yourusername/equipoise-rag)
+[![W&B](https://img.shields.io/badge/Experiments-Weights%20%26%20Biases-orange)](https://wandb.ai)
 
 ---
 
-**Dual-path Evidence Tracer**
+## What is Equipoise?
 
-Contradiction-aware scientific claim verification using dual-path Retrieval-Augmented Generation (RAG).
+Equipoise is a Retrieval-Augmented Generation system that verifies biomedical scientific claims by retrieving and synthesising evidence from PubMed literature. Unlike standard RAG systems that retrieve only documents similar to a query — inherently biasing toward confirming evidence — Equipoise systematically studies how different retrieval strategies affect the completeness of both supporting and contradicting evidence surfaced for a given claim.
 
----
-
-## Overview
-
-DUET is a biomedical NLP research system designed to verify scientific claims by deliberately retrieving **both supporting and contradicting evidence** from biomedical literature.
-
-Traditional RAG pipelines are structurally biased toward confirmation because semantic similarity retrieval favors documents that linguistically resemble the query, often suppressing null findings, contradictory trials, or opposing conclusions.
-
-DUET addresses this by introducing a **dual-path retrieval architecture**:
-
-* **Support Path:** Retrieves evidence supporting the claim
-* **Contradiction Path:** Retrieves evidence opposing or nullifying the claim
-
-These two evidence streams are independently retrieved, re-ranked, deduplicated, and synthesized into a balanced scientific verdict with source citations.
+The name comes from **clinical equipoise** — the genuine uncertainty between competing treatments when evidence is balanced. That is exactly what this system measures and surfaces.
 
 ---
 
-## Core Problem
+## The Research Problem
 
-Standard retrieval systems fail scientific balance because:
+Standard dense retrieval has a hidden structural bias. When you embed the query *"Does Vitamin D improve depression symptoms?"* and search by vector similarity, papers that find *no effect* score lower than papers that find *positive effects* — because they use different language. This is called **Semantic Collapse** (TREC BioGen 2025).
 
-* Dense embeddings collapse negation signals
-* Contradictory studies use different language patterns
-* Similarity search over-rewards positive phrasing
-* One-sided retrieval produces misleading conclusions
-
-### Example
-
-Claim:
-
-> Vitamin D supplementation improves depression symptoms
-
-Standard RAG may retrieve:
-
-* Positive RCTs
-* Supporting meta-analyses
-
-But miss:
-
-* Null-effect trials
-* Contradictory systematic reviews
-* Population-dependent failures
-
-DUET explicitly searches for both sides.
+Equipoise studies four retrieval strategies to measure how severely each is biased — using three original evaluation metrics: **Support Recall**, **Contradiction Recall**, and **Balance Score**.
 
 ---
 
-## Key Innovation
+## Research Question
 
-### Dual-path Query Reformulation
+> *How do retrieval strategies — dense, BM25, hybrid, and query-reformulation — affect Support Recall, Contradiction Recall, and Balance Score in biomedical claim verification, and what does this reveal about the structural bias of each retrieval method?*
 
-Input claim is transformed into:
+---
 
-**Support Query:**
+## Key Results
 
-```text
-Vitamin D supplementation positive effect depression improvement clinical trial evidence
+| Retrieval Strategy | Support Recall | Contradiction Recall | Balance Score | Faithfulness | Latency (s) |
+|---|---|---|---|---|---|
+| Dense (BGE-base) | TBD | TBD | TBD | TBD | TBD |
+| BM25 | TBD | TBD | TBD | TBD | TBD |
+| Hybrid (dense + BM25) | TBD | TBD | TBD | TBD | TBD |
+| Query-Reformulation | TBD | TBD | TBD | TBD | TBD |
+
+*Results populated after running experiments. See `results/` for full JSON outputs.*
+
+---
+
+## Architecture
+
 ```
-
-**Contradiction Query:**
-
-```text
-Vitamin D supplementation no effect null result depression clinical trial contradicts
+User inputs biomedical claim
+          |
+    Query Reformulator (Groq LLM)
+          |
+  --------+--------
+  |               |
+Support       Contradiction
+  Query           Query
+  |               |
+Retrieval     Retrieval
+(configurable: Dense / BM25 / Hybrid / Query-Reform)
+  |               |
+  +-------+-------+
+          |
+      Re-ranker
+          |
+    Verdict Prompt
+          |
+    LLM Generator (Groq llama-3.3-70b)
+          |
+  Structured Verdict + Citations
+          |
+  Evaluation Pipeline (RAGAS + Custom Metrics)
+          |
+  LangSmith Monitoring + W&B Tracking
 ```
-
-This architecture directly targets contradiction retrieval rather than assuming relevance equals truth.
-
----
-
-## Features
-
-### Retrieval
-
-* Dense retrieval (ChromaDB + embeddings)
-* Sparse retrieval (BM25)
-* Hybrid retrieval
-* Query reformulation retrieval
-* Cross-encoder re-ranking
-* Deduplication across support/contradiction paths
-
-### Chunking Strategies
-
-* Fixed-256
-* Fixed-512
-* Sliding Window
-* Sentence-level
-* Semantic chunking
-
-### Embedding Models
-
-* BAAI/bge-base-en-v1.5
-* PubMedBERT
-* S-PubMedBERT
-
-### Generation
-
-* Groq API (Llama models)
-* Ollama local fallback
-* Structured verdict generation
-* Citation-grounded synthesis
-
-### Evaluation
-
-* RAGAS metrics
-* Support Recall
-* Contradiction Recall
-* Balance Score
-* Latency tracking
-* Cost analysis
-
----
-
-## Original Research Contributions
-
-### Novel Architecture
-
-* First contradiction-aware dual-path biomedical RAG system
-
-### Novel Metrics
-
-* **Support Recall**
-* **Contradiction Recall**
-* **Balance Score**
-
-### Novel Evaluation Focus
-
-* Chunking strategy effects on contradiction coverage
-* Retrieval method effects on contradiction coverage
-* Domain embedding effects on contradiction retrieval
-
----
-
-## System Architecture
-
-```text
-User Claim
-   |
-   v
-Query Reformulator
-   |-------------------------|
-   v                         v
-Support Query          Contradiction Query
-   |                         |
-   v                         v
-Retriever 1             Retriever 2
-(Dense / BM25 / Hybrid) (Dense / BM25 / Hybrid)
-   |                         |
-   v                         v
-Re-ranker                Re-ranker
-   |                         |
-   -----------Merge + Deduplicate-----------
-                         |
-                         v
-                  Verdict Prompt Builder
-                         |
-                         v
-                    LLM Generator
-                         |
-                         v
-                Balanced Scientific Verdict
-```
-
----
-
-## Tech Stack
-
-### Core Stack
-
-* Python 3.11
-* LangChain
-* ChromaDB
-* rank-bm25
-* sentence-transformers
-* transformers
-* RAGAS
-* FastAPI
-* Streamlit
-* Docker
-
-### Inference
-
-* Groq API (primary)
-* Ollama (fallback)
-
-### Monitoring
-
-* LangSmith
-* Weights & Biases
-
-### Deployment
-
-* Hugging Face Spaces
-* GitHub Actions
-
----
-
-## Dataset Sources
-
-### Primary Dataset
-
-**SciFact**
-
-* 1,409 biomedical claims
-* SUPPORT / CONTRADICT / NOINFO labels
-* Expert-annotated
-* Essential for contradiction-aware evaluation
-
-### Secondary Datasets
-
-* PubMedQA
-* NLI4CT
-* BEIR SciFact
-* PubMed full corpus via Entrez API
-
----
-
-## Project Structure
-
-```text
-duet/
-│
-├── data/
-├── processed/
-├── chroma_db/
-├── src/
-│   ├── chunking.py
-│   ├── retriever.py
-│   ├── pipeline.py
-│   ├── evaluator.py
-│   ├── ragas_eval.py
-│   └── verdict_prompt.py
-│
-├── experiments/
-├── notebooks/
-├── results/
-├── app.py
-├── api.py
-├── Dockerfile
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Evaluation Metrics
-
-| Metric               | Purpose                                                |
-| -------------------- | ------------------------------------------------------ |
-| Support Recall       | Measures supporting evidence retrieval completeness    |
-| Contradiction Recall | Measures contradictory evidence retrieval completeness |
-| Balance Score        | Measures retrieval balance between both sides          |
-| Faithfulness         | Checks hallucination minimization                      |
-| Answer Relevance     | Measures claim alignment                               |
-| Context Precision    | Measures retrieval usefulness                          |
-| Context Recall       | Measures retrieval completeness                        |
-
----
-
-| Metric               | Purpose                                                |
-| -------------------- | ------------------------------------------------------ |
-| Support Recall       | Measures supporting evidence retrieval completeness    |
-| Contradiction Recall | Measures contradictory evidence retrieval completeness |
-| Balance Score        | Measures retrieval balance between both sides          |
-| Faithfulness         | Checks hallucination minimization                      |
-| Answer Relevance     | Measures claim alignment                               |
-| Context Precision    | Measures retrieval usefulness                          |
-| Context Recall       | Measures retrieval completeness                        |
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/duet.git
-cd duet
+# 1. Clone the repository
+git clone https://github.com/yourusername/equipoise-rag.git
+cd equipoise-rag
+
+# 2. Create virtual environment
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
-```
 
----
+# 4. Set up environment variables
+cp .env.example .env
+# Edit .env and add your API keys (see Environment Setup below)
 
-## Environment Variables
+# 5. Download SciFact dataset and build index
+python src/indexer.py
 
-Create `.env`:
-
-```env
-GROQ_API_KEY=your_key
-LANGCHAIN_API_KEY=your_key
-WANDB_API_KEY=your_key
-HUGGINGFACEHUB_API_TOKEN=your_key
-```
-
----
-
-## Running the Project
-
-### Streamlit App
-
-```bash
+# 6. Run the app
 streamlit run app.py
 ```
 
-### FastAPI Backend
+---
+
+## Environment Setup
+
+Copy `.env.example` to `.env` and fill in all four keys:
 
 ```bash
-uvicorn api:app --reload
+# Groq API — console.groq.com (free, no credit card)
+GROQ_API_KEY=your_groq_api_key_here
+
+# LangSmith — smith.langchain.com (free tier)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langsmith_api_key_here
+LANGCHAIN_PROJECT=equipoise-rag
+
+# Weights and Biases — wandb.ai (free tier)
+WANDB_API_KEY=your_wandb_api_key_here
+
+# HuggingFace — huggingface.co (free)
+HUGGINGFACE_TOKEN=your_hf_token_here
 ```
 
-### Docker
+---
+
+## Running Experiments
 
 ```bash
-docker build -t duet .
-docker run -p 8501:8501 duet
+# Build the abstract index (run once)
+python src/indexer.py
+
+# Run the main retrieval experiment (all 4 strategies)
+python experiments/exp01_retrieval.py
+
+# View results
+cat results/exp01_dense.json
+cat results/exp01_bm25.json
+cat results/exp01_hybrid.json
+cat results/exp01_queryreform.json
+
+# Run embedding model comparison
+python experiments/exp02_embedding.py
+```
+
+All experiment results are automatically logged to W&B and LangSmith.
+
+---
+
+## Running with Docker
+
+```bash
+# Build container
+docker build -t equipoise-rag .
+
+# Run
+docker run -p 8501:8501 --env-file .env equipoise-rag
+
+# Visit http://localhost:8501
 ```
 
 ---
 
-## Example Use Case
+## Project Structure
 
-### Input
-
-> Does omega-3 supplementation reduce depression symptoms?
-
-### Output
-
-```text
-VERDICT: Contested
-Supporting Evidence: Moderate evidence in clinically depressed populations
-Contradicting Evidence: Large RCTs show limited or no general population benefit
-Confidence: Low-to-moderate
+```
+equipoise-rag/
+|
++-- data/                    SciFact and PubMedQA dataset files
++-- chroma_db/               ChromaDB vector store (auto-generated)
+|
++-- src/
+|   +-- config.py            Central config for all parameters
+|   +-- indexer.py           Abstract loading, embedding, ChromaDB + BM25 indexing
+|   +-- reformulator.py      Query reformulation using Groq LLM
+|   +-- retriever.py         Dense, BM25, hybrid, query-reform retrieval methods
+|   +-- reranker.py          Cross-encoder re-ranking
+|   +-- pipeline.py          Full RAG pipeline
+|   +-- verdict_prompt.py    Structured verdict prompt templates
+|   +-- evaluator.py         Support Recall, Contradiction Recall, Balance Score
+|   +-- ragas_eval.py        RAGAS metric computation
+|   +-- logger.py            LangSmith + SQLite logging
+|   +-- utils.py             Shared utilities
+|
++-- notebooks/
+|   +-- 01_data_exploration.ipynb
+|   +-- 02_retrieval_tests.ipynb
+|   +-- 03_results_analysis.ipynb
+|   +-- 04_visualisations.ipynb
+|
++-- experiments/
+|   +-- exp01_retrieval.py   Dense vs BM25 vs Hybrid vs Query-reformulation
+|   +-- exp02_embedding.py   BGE-base vs PubMedBERT
+|
++-- results/                 JSON files with all evaluation scores
++-- tests/                   Unit tests
++-- .github/workflows/       GitHub Actions CI
++-- app.py                   Streamlit interface
++-- api.py                   FastAPI backend
++-- Dockerfile               Container definition
++-- requirements.txt         All dependencies
++-- .env.example             Environment variable template
++-- README.md                This file
 ```
 
 ---
 
-## Publication Potential
+## Datasets
 
-DUET is structured for:
-
-* EMNLP
-* ACL Findings
-* BioNLP Workshop
-* TREC BioGen
-* Information Retrieval journals
+| Dataset | Size | Use | Access |
+|---|---|---|---|
+| SciFact | 1,409 claims, 5,183 abstracts | Primary evaluation — expert SUPPORT/CONTRADICT labels | `load_dataset('allenai/scifact')` |
+| PubMedQA | 1K expert + 211K generated | Extended evaluation | `load_dataset('qiaojin/PubMedQA', 'pqa_labeled')` |
+| PubMed Full Corpus | 35M abstracts | Extended knowledge base | NCBI Entrez API (free) |
 
 ---
 
-## Future Extensions
+## Evaluation Metrics
 
-* Full PubMed live indexing
-* Multi-hop contradiction retrieval
-* Clinical trial-specific evidence weighting
-* Fine-tuned contradiction retrievers
-* Cross-domain scientific verification
+**Original metrics (novel contribution):**
+- **Support Recall** — fraction of known supporting abstracts retrieved
+- **Contradiction Recall** — fraction of known contradicting abstracts retrieved  
+- **Balance Score** — ratio of contradiction to support recall (1.0 = perfect balance)
+
+**Standard RAGAS metrics:**
+- Faithfulness, Answer Relevance, Context Precision, Context Recall
 
 ---
 
-## Guiding Principle
+## Tech Stack
 
-**DUET — Honest Evidence. Both Sides. Always.**
+| Component | Tool |
+|---|---|
+| Vector Database | ChromaDB |
+| Sparse Retrieval | rank-bm25 |
+| Primary LLM | llama-3.3-70b via Groq API |
+| Reformulation LLM | llama-3.1-8b via Groq API |
+| Local Fallback | Ollama (llama3.2:3b) |
+| Embedding (baseline) | BAAI/bge-base-en-v1.5 |
+| Embedding (domain) | microsoft/BiomedNLP-PubMedBERT-base |
+| Re-ranker | cross-encoder/ms-marco-MiniLM-L-6-v2 |
+| Evaluation | RAGAS |
+| Monitoring | LangSmith |
+| Experiment Tracking | Weights and Biases |
+| Frontend | Streamlit |
+| Backend | FastAPI |
+| Deployment | Hugging Face Spaces |
+| Containers | Docker |
+
+---
+
+## Citation
+
+If you use Equipoise or its evaluation toolkit in your research, please cite:
+
+```bibtex
+@software{equipoise2026,
+  author    = {Kireeti , Gowtham},
+  title     = {Equipoise: Evaluating Retrieval Strategy Bias in Biomedical Scientific Claim Verification},
+  year      = {2026},
+  url       = {https://github.com/kireeti-ai/equipoise-rag},
+  note      = {GitHub repository}
+}
+```
+
+---
+
+## Key References
+
+- Wadden et al. (2020). Fact or Fiction: Verifying Scientific Claims. EMNLP 2020.
+- Sahoo et al. (2025). Negation is Not Semantic: Diagnosing Dense Retrieval Failure Modes. TREC BioGen 2025.
+- Es et al. (2023). RAGAS: Automated Evaluation of Retrieval Augmented Generation. arXiv:2309.15217.
+- Lewis et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. NeurIPS 2020.
+
+---
+
+## License
+
+MIT License — free to use, modify, and distribute with attribution.
+
+---
+
+*Equipoise — Because honest evidence shows both sides.*
