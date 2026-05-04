@@ -4,14 +4,12 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![HuggingFace](https://img.shields.io/badge/Demo-HuggingFace%20Spaces-yellow)](https://huggingface.co/spaces/yourusername/equipoise-rag)
-[![W&B](https://img.shields.io/badge/Experiments-Weights%20%26%20Biases-orange)](https://wandb.ai)
 
 ---
 
 ## What is Equipoise?
 
-Equipoise is a Retrieval-Augmented Generation system that verifies biomedical scientific claims by retrieving and synthesising evidence from PubMed literature. Unlike standard RAG systems that retrieve only documents similar to a query — inherently biasing toward confirming evidence — Equipoise systematically studies how different retrieval strategies affect the completeness of both supporting and contradicting evidence surfaced for a given claim.
+Equipoise is a Retrieval-Augmented Generation system that verifies biomedical scientific claims by retrieving and synthesising evidence from the SciFact corpus. Unlike standard RAG systems that retrieve only documents similar to a query — inherently biasing toward confirming evidence — Equipoise systematically studies how different retrieval strategies affect the completeness of both supporting and contradicting evidence surfaced for a given claim.
 
 The name comes from **clinical equipoise** — the genuine uncertainty between competing treatments when evidence is balanced. That is exactly what this system measures and surfaces.
 
@@ -40,7 +38,7 @@ Equipoise studies four retrieval strategies to measure how severely each is bias
 | Hybrid (dense + BM25) | TBD | TBD | TBD | TBD | TBD |
 | Query-Reformulation | TBD | TBD | TBD | TBD | TBD |
 
-*Results populated after running experiments. See `results/` for full JSON outputs.*
+*Results populated after running investigations. See `results/` for full JSON outputs.*
 
 ---
 
@@ -49,29 +47,22 @@ Equipoise studies four retrieval strategies to measure how severely each is bias
 ```
 User inputs biomedical claim
           |
-    Query Reformulator (Groq LLM)
+    Query Reformulator            (Groq llama-3.1-8b — queryreform mode only)
           |
-  --------+--------
-  |               |
-Support       Contradiction
-  Query           Query
-  |               |
-Retrieval     Retrieval
-(configurable: Dense / BM25 / Hybrid / Query-Reform)
-  |               |
-  +-------+-------+
+    Retriever
+    (dense | bm25 | hybrid | queryreform)
           |
-      Re-ranker
+    Cross-Encoder Re-ranker       (ms-marco-MiniLM-L-6-v2)
           |
-    Verdict Prompt
+    Verdict Prompt                (neutral | biased | structured)
           |
-    LLM Generator (Groq llama-3.3-70b)
+    LLM Generator                 (Groq llama-3.3-70b-versatile)
           |
-  Structured Verdict + Citations
+    Structured Verdict + Citations
           |
-  Evaluation Pipeline (RAGAS + Custom Metrics)
+    Evaluation Pipeline           (Custom metrics + RAGAS)
           |
-  LangSmith Monitoring + W&B Tracking
+    LangSmith Tracing + SQLite Storage
 ```
 
 ---
@@ -85,7 +76,7 @@ cd equipoise-rag
 
 # 2. Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -94,10 +85,15 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env and add your API keys (see Environment Setup below)
 
-# 5. Download SciFact dataset and build index
-python src/indexer.py
+# 5. Download SciFact dataset
+curl -L "https://scifact.s3-us-west-2.amazonaws.com/release/latest/data.tar.gz" \
+     -o data/scifact/data.tar.gz
+tar -xzf data/scifact/data.tar.gz -C data/scifact/
 
-# 6. Run the app
+# 6. Build the index (run once — saved to chroma_db/)
+PYTHONPATH=. python src/indexer.py
+
+# 7. Run the app
 streamlit run app.py
 ```
 
@@ -105,7 +101,7 @@ streamlit run app.py
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` and fill in all four keys:
+Copy `.env.example` to `.env` and fill in the keys:
 
 ```bash
 # Groq API — console.groq.com (free, no credit card)
@@ -115,50 +111,33 @@ GROQ_API_KEY=your_groq_api_key_here
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=your_langsmith_api_key_here
 LANGCHAIN_PROJECT=equipoise-rag
-
-# Weights and Biases — wandb.ai (free tier)
-WANDB_API_KEY=your_wandb_api_key_here
-
-# HuggingFace — huggingface.co (free)
-HUGGINGFACE_TOKEN=your_hf_token_here
 ```
 
 ---
 
-## Running Experiments
+## Running Investigations
 
 ```bash
-# Build the abstract index (run once)
-python src/indexer.py
+# Run all 4 retrieval strategies on 300 SciFact claims (INV-01)
+PYTHONPATH=. python investigations/inv01_retrieval.py
 
-# Run the main retrieval experiment (all 4 strategies)
-python experiments/exp01_retrieval.py
+# Resume a specific strategy after interruption
+PYTHONPATH=. python investigations/inv01_retrieval.py --method bm25
 
-# View results
-cat results/exp01_dense.json
-cat results/exp01_bm25.json
-cat results/exp01_hybrid.json
-cat results/exp01_queryreform.json
+# Run top-K sensitivity on best strategy from INV-01 (INV-02)
+PYTHONPATH=. python investigations/inv02_topk.py
 
-# Run embedding model comparison
-python experiments/exp02_embedding.py
+# Run prompt variant comparison with RAGAS scoring (INV-03)
+PYTHONPATH=. python investigations/inv03_prompts.py
+
+# Inspect logged results
+PYTHONPATH=. python src/logger.py
+
+# Spot-check RAGAS scores on a single claim
+PYTHONPATH=. python src/ragas_eval.py
 ```
 
-All experiment results are automatically logged to W&B and LangSmith.
-
----
-
-## Running with Docker
-
-```bash
-# Build container
-docker build -t equipoise-rag .
-
-# Run
-docker run -p 8501:8501 --env-file .env equipoise-rag
-
-# Visit http://localhost:8501
-```
+All results are saved to `results/` as JSON and logged to SQLite at `results/equipoise.db`.
 
 ---
 
@@ -167,64 +146,68 @@ docker run -p 8501:8501 --env-file .env equipoise-rag
 ```
 equipoise-rag/
 |
-+-- data/                    SciFact and PubMedQA dataset files
-+-- chroma_db/               ChromaDB vector store (auto-generated)
++-- data/scifact/data/           SciFact corpus and claims
+|   +-- corpus.jsonl             5183 abstracts
+|   +-- claims_train.jsonl       Training claims with SUPPORT/CONTRADICT/NONE labels
+|   +-- claims_dev.jsonl         Dev claims
+|
++-- chroma_db/                   ChromaDB vector store + BM25 index (auto-generated)
 |
 +-- src/
-|   +-- config.py            Central config for all parameters
-|   +-- indexer.py           Abstract loading, embedding, ChromaDB + BM25 indexing
-|   +-- reformulator.py      Query reformulation using Groq LLM
-|   +-- retriever.py         Dense, BM25, hybrid, query-reform retrieval methods
-|   +-- reranker.py          Cross-encoder re-ranking
-|   +-- pipeline.py          Full RAG pipeline
-|   +-- verdict_prompt.py    Structured verdict prompt templates
-|   +-- evaluator.py         Support Recall, Contradiction Recall, Balance Score
-|   +-- ragas_eval.py        RAGAS metric computation
-|   +-- logger.py            LangSmith + SQLite logging
-|   +-- utils.py             Shared utilities
+|   +-- config.py                Central config (RETRIEVAL_METHOD, TOP_K, PROMPT_VARIANT)
+|   +-- indexer.py               Abstract loading, embedding, ChromaDB + BM25 indexing
+|   +-- retriever.py             Dense, BM25, hybrid, query-reform retrieval methods
+|   +-- reformulator.py          Query reformulation using Groq llama-3.1-8b
+|   +-- reranker.py              Cross-encoder re-ranking
+|   +-- pipeline.py              Full end-to-end RAG pipeline
+|   +-- verdict_prompt.py        Verdict prompt templates (neutral / biased / structured)
+|   +-- evaluator.py             Support Recall, Contradiction Recall, Balance Score
+|   +-- ragas_eval.py            RAGAS metric computation (faithfulness, answer relevancy)
+|   +-- logger.py                LangSmith tracing + SQLite result storage
+|   +-- utils.py                 Shared utilities
 |
-+-- notebooks/
-|   +-- 01_data_exploration.ipynb
-|   +-- 02_retrieval_tests.ipynb
-|   +-- 03_results_analysis.ipynb
-|   +-- 04_visualisations.ipynb
++-- investigations/
+|   +-- inv01_retrieval.py       Dense vs BM25 vs Hybrid vs Query-reformulation (300 claims)
+|   +-- inv02_topk.py            Top-K sensitivity: K=3 vs K=5 vs K=10
+|   +-- inv03_prompts.py         Prompt variant comparison with RAGAS scoring (50 claims)
 |
-+-- experiments/
-|   +-- exp01_retrieval.py   Dense vs BM25 vs Hybrid vs Query-reformulation
-|   +-- exp02_embedding.py   BGE-base vs PubMedBERT
-|
-+-- results/                 JSON files with all evaluation scores
-+-- tests/                   Unit tests
-+-- .github/workflows/       GitHub Actions CI
-+-- app.py                   Streamlit interface
-+-- api.py                   FastAPI backend
-+-- Dockerfile               Container definition
-+-- requirements.txt         All dependencies
-+-- .env.example             Environment variable template
-+-- README.md                This file
++-- results/                     JSON outputs + SQLite database
++-- tests/                       42 unit tests (all passing)
++-- app.py                       Streamlit interface
++-- requirements.txt             All dependencies
++-- .env.example                 Environment variable template
++-- CLAUDE.md                    Project context for AI-assisted development
++-- README.md                    This file
 ```
 
 ---
 
-## Datasets
+## Dataset
 
-| Dataset | Size | Use | Access |
-|---|---|---|---|
-| SciFact | 1,409 claims, 5,183 abstracts | Primary evaluation — expert SUPPORT/CONTRADICT labels | `load_dataset('allenai/scifact')` |
-| PubMedQA | 1K expert + 211K generated | Extended evaluation | `load_dataset('qiaojin/PubMedQA', 'pqa_labeled')` |
-| PubMed Full Corpus | 35M abstracts | Extended knowledge base | NCBI Entrez API (free) |
+**AllenAI SciFact** — downloaded directly from S3 release (not HuggingFace, which has loading script issues).
+
+| Split | Claims | Labels |
+|---|---|---|
+| claims_train.jsonl | 809 | SUPPORT: 456, CONTRADICT: 237, NONE: 116 |
+| claims_dev.jsonl | 300 | held-out evaluation |
+| corpus.jsonl | 5183 abstracts | expert-annotated |
+
+INV-01 uses a stratified sample of 150 SUPPORT + 150 CONTRADICT claims from `claims_train.jsonl` (seed=42). NONE claims are excluded — they carry no ground-truth abstract IDs, making recall undefined.
 
 ---
 
 ## Evaluation Metrics
 
-**Original metrics (novel contribution):**
+**Original metrics:**
 - **Support Recall** — fraction of known supporting abstracts retrieved
-- **Contradiction Recall** — fraction of known contradicting abstracts retrieved  
-- **Balance Score** — ratio of contradiction to support recall (1.0 = perfect balance)
+- **Contradiction Recall** — fraction of known contradicting abstracts retrieved
+- **Balance Score** — Contradiction Recall / Support Recall (1.0 = perfect, < 0.5 = biased toward support)
 
-**Standard RAGAS metrics:**
-- Faithfulness, Answer Relevance, Context Precision, Context Recall
+**RAGAS metrics (INV-03):**
+- Faithfulness (> 0.70)
+- Answer Relevancy (> 0.70)
+- Context Precision (> 0.65)
+- Context Recall (> 0.65)
 
 ---
 
@@ -234,34 +217,23 @@ equipoise-rag/
 |---|---|
 | Vector Database | ChromaDB |
 | Sparse Retrieval | rank-bm25 |
-| Primary LLM | llama-3.3-70b via Groq API |
-| Reformulation LLM | llama-3.1-8b via Groq API |
-| Local Fallback | Ollama (llama3.2:3b) |
-| Embedding (baseline) | BAAI/bge-base-en-v1.5 |
-| Embedding (domain) | microsoft/BiomedNLP-PubMedBERT-base |
+| Embedding Model | BAAI/bge-base-en-v1.5 (109M params) |
+| Primary LLM | Groq llama-3.3-70b-versatile |
+| Reformulation LLM | Groq llama-3.1-8b-instant |
 | Re-ranker | cross-encoder/ms-marco-MiniLM-L-6-v2 |
-| Evaluation | RAGAS |
-| Monitoring | LangSmith |
-| Experiment Tracking | Weights and Biases |
+| RAG Evaluation | RAGAS 0.2.x |
+| LLM Monitoring | LangSmith |
+| Result Storage | SQLite |
 | Frontend | Streamlit |
-| Backend | FastAPI |
-| Deployment | Hugging Face Spaces |
-| Containers | Docker |
+| Hardware | Apple Silicon MPS (M-series Mac) |
 
 ---
 
-## Citation
+## Running Tests
 
-If you use Equipoise or its evaluation toolkit in your research, please cite:
-
-```bibtex
-@software{equipoise2026,
-  author    = {Kireeti , Gowtham},
-  title     = {Equipoise: Evaluating Retrieval Strategy Bias in Biomedical Scientific Claim Verification},
-  year      = {2026},
-  url       = {https://github.com/kireeti-ai/equipoise-rag},
-  note      = {GitHub repository}
-}
+```bash
+PYTHONPATH=. pytest tests/ -v
+# 42 passed
 ```
 
 ---
