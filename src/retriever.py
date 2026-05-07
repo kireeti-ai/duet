@@ -16,9 +16,19 @@ from src.config import (
     TOP_K, HYBRID_DENSE_WEIGHT, HYBRID_BM25_WEIGHT, RETRIEVAL_METHOD
 )
 
+_cache = {}
+
 
 def load_resources():
     """Load embedding model, ChromaDB collection, BM25 index, and abstracts."""
+    if _cache:
+        return (
+            _cache["embedding_model"],
+            _cache["collection"],
+            _cache["bm25"],
+            _cache["abstracts"]
+        )
+
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     embedding_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
 
@@ -29,6 +39,11 @@ def load_resources():
         bm25 = pickle.load(f)
     with open(f"{CHROMA_DB_PATH}/abstracts.pkl", "rb") as f:
         abstracts = pickle.load(f)
+
+    _cache["embedding_model"] = embedding_model
+    _cache["collection"] = collection
+    _cache["bm25"] = bm25
+    _cache["abstracts"] = abstracts
 
     return embedding_model, collection, bm25, abstracts
 

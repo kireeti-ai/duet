@@ -221,3 +221,5 @@ venv/
 chroma_db/
 __pycache__/
 data/
+claude.md
+CLAUDE.md
