@@ -22,7 +22,7 @@ import torch
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
-
+    
 from src.config import (
     CHROMA_COLLECTION_NAME, CHROMA_DB_PATH, EMBEDDING_MODEL
 )

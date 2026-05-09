@@ -1,0 +1,30 @@
+{
+  "dense": {
+    "n_claims": 300,
+    "n_errors": 0,
+    "mean_support_recall": 0.9327777777777777,
+    "mean_contradiction_recall": 0.9794444444444446,
+    "mean_balance_score": 1.0500297796307327
+  },
+  "bm25": {
+    "n_claims": 300,
+    "n_errors": 0,
+    "mean_support_recall": 0.8344444444444444,
+    "mean_contradiction_recall": 0.865,
+    "mean_balance_score": 1.0366178428761652
+  },
+  "hybrid": {
+    "n_claims": 300,
+    "n_errors": 0,
+    "mean_support_recall": 0.9522222222222223,
+    "mean_contradiction_recall": 0.9572222222222223,
+    "mean_balance_score": 1.0052508751458575
+  },
+  "queryreform": {
+    "n_claims": 300,
+    "n_errors": 0,
+    "mean_support_recall": 0.8566666666666667,
+    "mean_contradiction_recall": 0.9266666666666666,
+    "mean_balance_score": 1.0817120622568093
+  }
+}

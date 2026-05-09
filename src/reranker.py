@@ -8,6 +8,16 @@ more accurate than embedding similarity alone.
 from sentence_transformers import CrossEncoder
 from src.config import RERANKER_MODEL
 
+_cross_encoder_model = None
+
+
+def _get_cross_encoder() -> CrossEncoder:
+    """Load the cross-encoder once per process and reuse it."""
+    global _cross_encoder_model
+    if _cross_encoder_model is None:
+        _cross_encoder_model = CrossEncoder(RERANKER_MODEL)
+    return _cross_encoder_model
+
 
 def rerank(query: str, retrieved: list, top_k: int = 5) -> list:
     """
@@ -27,7 +37,7 @@ def rerank(query: str, retrieved: list, top_k: int = 5) -> list:
     if not retrieved:
         return []
 
-    model = CrossEncoder(RERANKER_MODEL)
+    model = _get_cross_encoder()
 
     pairs = [[query, r["title"] + " " + r["text"]] for r in retrieved]
     scores = model.predict(pairs)

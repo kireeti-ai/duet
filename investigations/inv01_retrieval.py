@@ -23,19 +23,19 @@ Usage:
 """
 
 import os
-import sys
 import json
 import random
 import argparse
 import time
-from collections import defaultdict
 
 # ---------------------------------------------------------------------------
 # Imports
 # ---------------------------------------------------------------------------
 
 import src.config as cfg
-from src.pipeline import run_pipeline
+from src.retriever import retrieve
+from src.reranker import rerank
+from src.reformulator import reformulate_query
 from src.logger import init_db, log_run, get_runs, export_to_json
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ STRATEGIES      = ["dense", "bm25", "hybrid", "queryreform"]
 N_SUPPORT       = 150
 N_CONTRADICT    = 150
 RANDOM_SEED     = 42
-INTER_CALL_SLEEP = 0.5   # seconds between pipeline calls — avoids Groq 429s
+INTER_CALL_SLEEP = 0.2   # seconds between claims
 
 RESULTS_DIR     = "results"
 INV_LABEL       = "inv01"
@@ -174,6 +174,31 @@ def _already_logged(claim_text: str, method: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Retrieval-only pipeline for INV-01
+# ---------------------------------------------------------------------------
+
+def _run_inv01_retrieval_only(claim_text: str, method: str) -> dict:
+    """
+    INV-01 evaluates retrieval behavior only.
+    Skip verdict generation to avoid unnecessary latency and API bottlenecks.
+    """
+    reformulated = None
+    if method == "queryreform":
+        reformulated = reformulate_query(claim_text)
+
+    retrieved = retrieve(claim_text, method=method, reformulated_query=reformulated)
+    reranked = rerank(claim_text, retrieved, top_k=cfg.TOP_K)
+
+    return {
+        "claim": claim_text,
+        "method": method,
+        "reformulated_query": reformulated,
+        "retrieved": reranked,
+        "verdict": "INV-01 retrieval-only run (verdict generation skipped).",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Per-strategy runner
 # ---------------------------------------------------------------------------
 
@@ -205,7 +230,7 @@ def run_strategy(method: str, sample: list[dict]) -> list[dict]:
         supporting_ids, contradicting_ids = _extract_ground_truth(claim_rec)
 
         try:
-            pipeline_output = run_pipeline(claim_text)
+            pipeline_output = _run_inv01_retrieval_only(claim_text, method)
             retrieved       = pipeline_output.get("retrieved", [])
             verdict         = pipeline_output.get("verdict", "")
 
@@ -248,7 +273,7 @@ def run_strategy(method: str, sample: list[dict]) -> list[dict]:
                 },
             })
 
-        if i < len(remaining) - 1:
+        if method == "queryreform" and i < len(remaining) - 1:
             time.sleep(INTER_CALL_SLEEP)
 
     return results
@@ -258,24 +283,32 @@ def run_strategy(method: str, sample: list[dict]) -> list[dict]:
 # Aggregate metrics
 # ---------------------------------------------------------------------------
 
-def _aggregate(results: list[dict]) -> dict:
+def _aggregate(method: str) -> dict:
     """
     Compute mean Support Recall, Contradiction Recall, Balance Score
-    across all claims that returned a valid score.
+    from all rows currently logged for a method (resume-safe).
     """
-    sr_vals  = [r["eval_scores"]["support_recall"]       for r in results if r["eval_scores"].get("support_recall")       is not None]
-    cr_vals  = [r["eval_scores"]["contradiction_recall"]  for r in results if r["eval_scores"].get("contradiction_recall") is not None]
-    bal_vals = [r["eval_scores"]["balance_score"]         for r in results if r["eval_scores"].get("balance_score")        is not None]
+    rows = get_runs(investigation=f"{INV_LABEL}_{method}", limit=5000)
 
+    sr_vals = [row["support_recall"] for row in rows if row.get("support_recall") is not None]
+    cr_vals = [row["contradiction_recall"] for row in rows if row.get("contradiction_recall") is not None]
     def mean(vals):
         return sum(vals) / len(vals) if vals else None
 
+    mean_support = mean(sr_vals)
+    mean_contradiction = mean(cr_vals)
+    mean_balance = (
+        mean_contradiction / mean_support
+        if mean_support is not None and mean_support > 0
+        else None
+    )
+
     return {
-        "n_claims":                   len(results),
-        "n_errors":                   sum(1 for r in results if "error" in r),
-        "mean_support_recall":        mean(sr_vals),
-        "mean_contradiction_recall":  mean(cr_vals),
-        "mean_balance_score":         mean(bal_vals),
+        "n_claims":                   len(rows),
+        "n_errors":                   (N_SUPPORT + N_CONTRADICT) - len(rows),
+        "mean_support_recall":        mean_support,
+        "mean_contradiction_recall":  mean_contradiction,
+        "mean_balance_score":         mean_balance,
     }
 
 
@@ -345,7 +378,7 @@ def main(strategies_to_run: list[str]) -> None:
         export_to_json(out_path=out_path, investigation=f"{INV_LABEL}_{method}")
         print(f"  Saved {out_path}")
 
-        agg = _aggregate(results)
+        agg = _aggregate(method)
         strategy_summaries[method] = agg
 
         print(
