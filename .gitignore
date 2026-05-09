@@ -216,10 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-.env
-venv/
-chroma_db/
-__pycache__/
-data/
-claude.md
-CLAUDE.md
+
+# Equipoise local artifacts
+/.env
+/venv/
+/chroma_db/
+/data/
+/__pycache__/
+
+# macOS
+.DS_Store
