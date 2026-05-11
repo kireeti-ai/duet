@@ -6,7 +6,10 @@ Returns a structured verdict with citations.
 """
 
 from groq import Groq
-from src.config import GROQ_API_KEY, GROQ_VERDICT_MODEL, RETRIEVAL_METHOD, TOP_K
+from src.config import (
+    GROQ_API_KEY, GROQ_VERDICT_MODEL, RETRIEVAL_METHOD,
+    RETRIEVAL_CANDIDATE_K, TOP_K
+)
 from src.retriever import retrieve
 from src.reranker import rerank
 from src.reformulator import reformulate_query
@@ -43,8 +46,13 @@ def run_pipeline(claim: str, method: str = RETRIEVAL_METHOD) -> dict:
 
     # Step 2: retrieve
     print("Retrieving abstracts...")
-    retrieved = retrieve(claim, method=method, reformulated_query=reformulated)
-    print(f"Retrieved {len(retrieved)} abstracts")
+    retrieved = retrieve(
+        claim,
+        method=method,
+        reformulated_query=reformulated,
+        top_k=RETRIEVAL_CANDIDATE_K
+    )
+    print(f"Retrieved {len(retrieved)} candidate abstracts")
 
     # Step 3: rerank
     print("Reranking...")

@@ -128,3 +128,8 @@ def test_retrieve_ids_are_strings():
     results = retrieve(TEST_CLAIM, method="bm25")
     for r in results:
         assert isinstance(r["id"], str)
+
+
+def test_retrieve_top_k_override():
+    results = retrieve(TEST_CLAIM, method="bm25", top_k=7)
+    assert len(results) == 7

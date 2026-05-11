@@ -96,7 +96,7 @@ Run all scripts with: `PYTHONPATH=. python src/filename.py`
 
 ## Files Written and Status
 
-### src/ — ALL COMPLETE AND TESTED
+### src/ — COMPLETE (core pipeline)
 
 | File | Status | Notes |
 |---|---|---|
@@ -104,7 +104,7 @@ Run all scripts with: `PYTHONPATH=. python src/filename.py`
 | src/indexer.py | DONE | Loads from local corpus.jsonl. Uses MPS on Apple Silicon |
 | src/retriever.py | DONE | dense, bm25, hybrid, queryreform all working. `load_resources()` now uses module-level cache and loads once per process. |
 | src/reformulator.py | DONE | Groq llama-3.1-8b rewrites claim with negation language |
-| src/reranker.py | DONE | cross-encoder/ms-marco-MiniLM-L-6-v2. **KNOWN ISSUE: `CrossEncoder` is re-initialized on every `rerank()` call (performance overhead).** |
+| src/reranker.py | DONE | cross-encoder/ms-marco-MiniLM-L-6-v2. Module-level cache implemented via `_get_cross_encoder()` (loaded once per process). |
 | src/verdict_prompt.py | DONE | 3 variants: neutral, biased, structured |
 | src/pipeline.py | DONE | Full end-to-end pipeline working |
 | src/evaluator.py | DONE | Support Recall, Contradiction Recall, Balance Score |
@@ -112,28 +112,41 @@ Run all scripts with: `PYTHONPATH=. python src/filename.py`
 | src/logger.py | DONE | LangSmith tracing + SQLite storage at results/equipoise.db |
 | src/utils.py | EMPTY | Shared utilities — low priority |
 
-### tests/ — ALL 42 PASSING
+### tests/ — 44 TESTS TOTAL
 
 ```
-42 passed in 317.43s
-test_evaluator.py  — 15 tests PASSED
-test_pipeline.py   — 12 tests PASSED
-test_retriever.py  — 15 tests PASSED
+44 tests collected
+test_evaluator.py  — 15 tests
+test_pipeline.py   — 12 tests
+test_retriever.py  — 15 tests
+test_reranker.py   — 2 tests
 ```
 
 Run with: `PYTHONPATH=. pytest tests/ -v`
+
+Current runtime note: `test_pipeline.py` uses live Groq calls and can fail with 429 rate-limit errors when API quota is exhausted. In the latest local run: 32 passed, 12 failed (all in `test_pipeline.py`) due to Groq 429.
 
 ### investigations/
 
 | File | Status | Notes |
 |---|---|---|
-| investigations/inv01_retrieval.py | WRITTEN, NOT COMPLETE | Script works, ran 8 dense claims successfully before Ctrl+C. Retriever cache fix is done; ready to resume from claim 9. |
-| investigations/inv02_topk.py | NOT STARTED | |
-| investigations/inv03_prompts.py | NOT STARTED | |
+| investigations/inv01_retrieval.py | COMPLETE | Resume-safe script. `results/inv01_*.json` and `results/inv01_summary.json` exist with 300 claims per strategy (1200 runs logged). |
+| investigations/inv02_topk.py | NOT CREATED | File does not exist yet. |
+| investigations/inv03_prompts.py | NOT CREATED | File does not exist yet. |
 
-### app.py — NOT STARTED
+INV-01 summary snapshot (`results/inv01_summary.json`):
+- dense: support 0.9328, contradiction 0.9794, balance 1.0500
+- bm25: support 0.8344, contradiction 0.8650, balance 1.0366
+- hybrid: support 0.9522, contradiction 0.9572, balance 1.0053
+- queryreform: support 0.8567, contradiction 0.9267, balance 1.0817 (highest balance)
 
-Streamlit UI.
+### app.py / api.py — NOT STARTED
+
+Both files currently exist but are empty.
+
+### requirements.txt — MISSING CONTENT
+
+`requirements.txt` exists but is empty (0 lines), so dependency installation is not reproducible from repo state alone.
 
 ---
 
@@ -150,7 +163,7 @@ ChromaDB and BM25 indexes are built and saved to disk at `chroma_db/`.
 
 ## Important Technical Decisions Made
 
-1. **No chunking** — PubMed abstracts are 250 words max. One abstract = one retrieval unit.
+1. **No chunking** — PubMed abstracts are 250 words maxqw. One abstract = one retrieval unit.
 2. **No live PubMed API** — SciFact corpus only. Labels needed for evaluation.
 3. **BeIR/scifact removed** — Use local AllenAI files. BeIR has no CONTRADICT labels (only score=1).
 4. **MPS device** — Apple Silicon detected and used automatically in indexer and retriever.
@@ -162,15 +175,16 @@ ChromaDB and BM25 indexes are built and saved to disk at `chroma_db/`.
 
 ---
 
-## Current Performance Issue (Before Long INV-01 Runs)
+## Current Reliability Issue
 
-**Problem: `src/reranker.py` re-initializes `CrossEncoder` inside `rerank()` on every call.**
+**Problem: pipeline tests and live runs can fail on Groq API quota/rate limits (HTTP 429).**
 
-This repeats model loading for every claim and adds avoidable latency in investigation loops.
+`tests/test_pipeline.py` invokes real Groq completions for both verdict generation and query reformulation.
+When quota is exhausted, retrieval and reranking still work, but verdict-generation test assertions fail upstream.
 
-**Current state:** `src/retriever.py` caching issue is already fixed (`load_resources()` caches embedding model + Chroma collection + BM25 + abstracts once per process).
+**Current state:** retriever and reranker caching are already in place (`src/retriever.py` + `src/reranker.py`).
 
-**Recommended next fix:** move reranker model load to module-level cache in `src/reranker.py`, then reuse it across calls.
+**Recommended next fix:** make pipeline tests deterministic by mocking Groq client calls (or gate integration tests separately from unit tests).
 
 ---
 
@@ -228,27 +242,20 @@ CLAIMS_DEV_PATH = "data/scifact/data/claims_dev.jsonl"
 
 ## What Is Left — In Order
 
-### Step 0 — Cache reranker model (IMMEDIATE)
-Add module-level caching in `src/reranker.py` so `CrossEncoder` is loaded once per process.
+### Step 1 — Build investigations/inv02_topk.py
+Implement K-sensitivity runner (K=3,5,10) on best INV-01 method and export `results/inv02_k*.json`.
 
-### Step 1 — Re-run investigations/inv01_retrieval.py
-8 dense claims already in DB — will be skipped. Resume from claim 9.
-Expected runtime after retriever + reranker caching: ~25-40 min for all 4 strategies.
+### Step 2 — Build investigations/inv03_prompts.py
+Implement prompt-sensitivity runner (neutral/biased/structured) over 50 claims with RAGAS scoring and JSON exports.
 
-### Step 2 — investigations/inv02_topk.py
-Run K=3, K=5, K=10 on best strategy from INV-01.
-Saves to results/inv02_k3.json, inv02_k5.json, inv02_k10.json.
+### Step 3 — Implement app.py (and optional API wrapper in api.py)
+Create Streamlit UI for claim entry, method selector, K selector, prompt variant selector, and verdict/evidence display.
 
-### Step 3 — investigations/inv03_prompts.py
-Run 3 prompt variants on 50 claims.
-Saves to results/inv03_neutral.json, inv03_biased.json, inv03_structured.json.
-This is where RAGAS runs (50 claims × 3 prompts = 150 RAGAS evaluations).
+### Step 4 — Stabilize tests and packaging
+Add deterministic pipeline test strategy (mock/stub Groq) and populate `requirements.txt`.
 
-### Step 4 — app.py
-Streamlit UI. Claim input, verdict display, retrieval method selector, top-K selector, prompt variant selector, monitoring sidebar.
-
-### Step 5 — README.md
-Results table, setup instructions, architecture description.
+### Step 5 — Refresh README.md
+Publish measured results (INV-01 complete; INV-02/03 pending), reproducible setup, and architecture updates.
 
 ---
 
@@ -301,6 +308,6 @@ measures faithfulness, answer relevance, context precision
 
 ## Next Immediate Action
 
-1. Open `src/reranker.py` and add module-level cache for `CrossEncoder`.
-2. Run `PYTHONPATH=. pytest tests/ -v` to confirm nothing broke.
-3. Run `PYTHONPATH=. python investigations/inv01_retrieval.py` — should resume from claim 9 of dense, then run bm25/hybrid/queryreform.
+1. Use `results/inv01_summary.json` to choose the strategy for INV-02 (current highest Balance Score: queryreform).
+2. Implement `investigations/inv02_topk.py`.
+3. Make `test_pipeline.py` resilient to Groq quota limits by mocking live API calls.

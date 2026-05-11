@@ -17,7 +17,8 @@ RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 # --- Retrieval Settings ---
 RETRIEVAL_METHOD = "dense"     # options: dense | bm25 | hybrid | queryreform
-TOP_K = 5                      # INV-02: change to 3, 5, or 10
+RETRIEVAL_CANDIDATE_K = 30     # documents fetched before reranking
+TOP_K = 5                      # final documents kept after reranking (INV-02: 3, 5, or 10)
 HYBRID_DENSE_WEIGHT = 0.6
 HYBRID_BM25_WEIGHT = 0.4
 

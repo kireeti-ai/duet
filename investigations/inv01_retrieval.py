@@ -186,7 +186,12 @@ def _run_inv01_retrieval_only(claim_text: str, method: str) -> dict:
     if method == "queryreform":
         reformulated = reformulate_query(claim_text)
 
-    retrieved = retrieve(claim_text, method=method, reformulated_query=reformulated)
+    retrieved = retrieve(
+        claim_text,
+        method=method,
+        reformulated_query=reformulated,
+        top_k=cfg.RETRIEVAL_CANDIDATE_K
+    )
     reranked = rerank(claim_text, retrieved, top_k=cfg.TOP_K)
 
     return {

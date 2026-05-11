@@ -137,25 +137,26 @@ def hybrid_retrieve(query, embedding_model, collection, bm25, abstracts, top_k=T
     return retrieved
 
 
-def retrieve(query, method=RETRIEVAL_METHOD, reformulated_query=None):
+def retrieve(query, method=RETRIEVAL_METHOD, reformulated_query=None, top_k=TOP_K):
     """
     Main retrieval function. Calls the correct strategy based on config.
     method options: dense | bm25 | hybrid | queryreform
+    top_k controls how many candidates are returned before reranking.
     """
     embedding_model, collection, bm25, abstracts = load_resources()
 
     if method == "dense":
-        return dense_retrieve(query, embedding_model, collection)
+        return dense_retrieve(query, embedding_model, collection, top_k=top_k)
 
     elif method == "bm25":
-        return bm25_retrieve(query, bm25, abstracts)
+        return bm25_retrieve(query, bm25, abstracts, top_k=top_k)
 
     elif method == "hybrid":
-        return hybrid_retrieve(query, embedding_model, collection, bm25, abstracts)
+        return hybrid_retrieve(query, embedding_model, collection, bm25, abstracts, top_k=top_k)
 
     elif method == "queryreform":
         search_query = reformulated_query if reformulated_query else query
-        return dense_retrieve(search_query, embedding_model, collection)
+        return dense_retrieve(search_query, embedding_model, collection, top_k=top_k)
 
     else:
         raise ValueError(f"Unknown retrieval method: {method}. Choose: dense | bm25 | hybrid | queryreform")
