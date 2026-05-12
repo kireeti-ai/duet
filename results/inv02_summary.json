@@ -1,0 +1,20 @@
+{
+  "method": "dense",
+  "k_values": [
+    3
+  ],
+  "max_claims": null,
+  "summaries": {
+    "3": {
+      "n_claims": 3,
+      "mean_support_recall": null,
+      "mean_contradiction_recall": 1.0,
+      "mean_balance_score": null,
+      "mean_faithfulness": null,
+      "mean_context_precision": null,
+      "mean_latency_seconds": 38.180774638662115,
+      "ragas_error_count": 3,
+      "run_config_hash": "f305fef077b0abb2"
+    }
+  }
+}

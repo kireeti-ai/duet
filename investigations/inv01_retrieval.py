@@ -15,7 +15,7 @@ Results saved to:
     results/inv01_hybrid.json
     results/inv01_queryreform.json
 
-Resume-safe: already-logged claim+method combos are skipped on re-run.
+Resume-safe: already-logged claim+method+config combos are skipped on re-run.
 
 Usage:
     PYTHONPATH=. python investigations/inv01_retrieval.py
@@ -27,6 +27,7 @@ import json
 import random
 import argparse
 import time
+import hashlib
 
 # ---------------------------------------------------------------------------
 # Imports
@@ -150,7 +151,7 @@ def _compute_claim_scores(
     else:
         contradiction_recall = None   # claim has no contradicting abstracts (pure SUPPORT claim)
 
-    if support_recall and contradiction_recall:
+    if support_recall is not None and contradiction_recall is not None:
         balance_score = contradiction_recall / support_recall if support_recall > 0 else 0.0
     else:
         balance_score = None
@@ -163,14 +164,31 @@ def _compute_claim_scores(
 
 
 # ---------------------------------------------------------------------------
-# Already-done check (resume support)
+# Run configuration hashing (resume safety)
 # ---------------------------------------------------------------------------
 
-def _already_logged(claim_text: str, method: str) -> bool:
-    """Return True if this claim+method combo exists in the DB."""
-    runs = get_runs(investigation=f"{INV_LABEL}_{method}")
-    done = {r["claim"] for r in runs}
-    return claim_text in done
+def _build_run_config(method: str) -> dict:
+    """
+    Include all settings that materially affect INV-01 retrieval outcomes.
+    """
+    return {
+        "investigation": INV_LABEL,
+        "method": method,
+        "claims_path": cfg.CLAIMS_TRAIN_PATH,
+        "n_support": N_SUPPORT,
+        "n_contradict": N_CONTRADICT,
+        "random_seed": RANDOM_SEED,
+        "retrieval_candidate_k": cfg.RETRIEVAL_CANDIDATE_K,
+        "final_top_k": cfg.TOP_K,
+        "hybrid_dense_weight": cfg.HYBRID_DENSE_WEIGHT,
+        "hybrid_bm25_weight": cfg.HYBRID_BM25_WEIGHT,
+        "prompt_variant": cfg.PROMPT_VARIANT,
+    }
+
+
+def _config_hash(run_config: dict) -> str:
+    payload = json.dumps(run_config, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -207,24 +225,37 @@ def _run_inv01_retrieval_only(claim_text: str, method: str) -> dict:
 # Per-strategy runner
 # ---------------------------------------------------------------------------
 
-def run_strategy(method: str, sample: list[dict]) -> list[dict]:
+def run_strategy(method: str, sample: list[dict]) -> tuple[list[dict], str]:
     """
     Run one retrieval strategy across all claims in the sample.
-    Returns a list of result dicts (one per claim).
+    Returns (result_rows, run_config_hash).
     """
     inv_label = f"{INV_LABEL}_{method}"
     results   = []
     total     = len(sample)
+    run_config = _build_run_config(method)
+    run_config_hash = _config_hash(run_config)
 
     # Override config — single-threaded, safe
     cfg.RETRIEVAL_METHOD = method
 
     # Count already done
-    done_claims = {r["claim"] for r in get_runs(investigation=inv_label)}
+    done_claims = {
+        r["claim"] for r in get_runs(
+            investigation=inv_label,
+            run_config_hash=run_config_hash,
+            limit=5000
+        )
+    }
     remaining   = [c for c in sample if c.get("claim", "") not in done_claims]
 
     if done_claims:
-        print(f"  Resuming: {len(done_claims)} already done, {len(remaining)} remaining")
+        print(
+            f"  Resuming ({run_config_hash}): "
+            f"{len(done_claims)} already done, {len(remaining)} remaining"
+        )
+    else:
+        print(f"  Run config hash: {run_config_hash}")
 
     for i, claim_rec in enumerate(remaining):
         claim_text = claim_rec.get("claim", "")
@@ -243,6 +274,9 @@ def run_strategy(method: str, sample: list[dict]) -> list[dict]:
 
             # Attach prompt_variant for logger (config value)
             pipeline_output["prompt_variant"] = cfg.PROMPT_VARIANT
+            pipeline_output["retrieval_candidate_k"] = cfg.RETRIEVAL_CANDIDATE_K
+            pipeline_output["final_top_k"] = cfg.TOP_K
+            pipeline_output["run_config_hash"] = run_config_hash
 
             row_id = log_run(
                 pipeline_output=pipeline_output,
@@ -261,6 +295,7 @@ def run_strategy(method: str, sample: list[dict]) -> list[dict]:
                 "verdict":             verdict,
                 "eval_scores":         eval_scores,
                 "db_row_id":           row_id,
+                "run_config_hash":     run_config_hash,
             }
             results.append(result)
 
@@ -281,19 +316,23 @@ def run_strategy(method: str, sample: list[dict]) -> list[dict]:
         if method == "queryreform" and i < len(remaining) - 1:
             time.sleep(INTER_CALL_SLEEP)
 
-    return results
+    return results, run_config_hash
 
 
 # ---------------------------------------------------------------------------
 # Aggregate metrics
 # ---------------------------------------------------------------------------
 
-def _aggregate(method: str) -> dict:
+def _aggregate(method: str, run_config_hash: str) -> dict:
     """
     Compute mean Support Recall, Contradiction Recall, Balance Score
     from all rows currently logged for a method (resume-safe).
     """
-    rows = get_runs(investigation=f"{INV_LABEL}_{method}", limit=5000)
+    rows = get_runs(
+        investigation=f"{INV_LABEL}_{method}",
+        run_config_hash=run_config_hash,
+        limit=5000
+    )
 
     sr_vals = [row["support_recall"] for row in rows if row.get("support_recall") is not None]
     cr_vals = [row["contradiction_recall"] for row in rows if row.get("contradiction_recall") is not None]
@@ -314,6 +353,7 @@ def _aggregate(method: str) -> dict:
         "mean_support_recall":        mean_support,
         "mean_contradiction_recall":  mean_contradiction,
         "mean_balance_score":         mean_balance,
+        "run_config_hash":            run_config_hash,
     }
 
 
@@ -376,14 +416,18 @@ def main(strategies_to_run: list[str]) -> None:
         print(f"Running strategy: {method}")
         print("-" * 52)
 
-        results = run_strategy(method, sample)
+        results, run_config_hash = run_strategy(method, sample)
 
         # Export per-strategy JSON
         out_path = os.path.join(RESULTS_DIR, f"inv01_{method}.json")
-        export_to_json(out_path=out_path, investigation=f"{INV_LABEL}_{method}")
+        export_to_json(
+            out_path=out_path,
+            investigation=f"{INV_LABEL}_{method}",
+            run_config_hash=run_config_hash
+        )
         print(f"  Saved {out_path}")
 
-        agg = _aggregate(method)
+        agg = _aggregate(method, run_config_hash=run_config_hash)
         strategy_summaries[method] = agg
 
         print(

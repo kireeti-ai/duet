@@ -2,29 +2,33 @@
   "dense": {
     "n_claims": 300,
     "n_errors": 0,
-    "mean_support_recall": 0.9327777777777777,
-    "mean_contradiction_recall": 0.9794444444444446,
-    "mean_balance_score": 1.0500297796307327
+    "mean_support_recall": 0.923888888888889,
+    "mean_contradiction_recall": 0.9616666666666667,
+    "mean_balance_score": 1.0408899579073962,
+    "run_config_hash": "2118a3a75e552b03"
   },
   "bm25": {
     "n_claims": 300,
     "n_errors": 0,
-    "mean_support_recall": 0.8344444444444444,
-    "mean_contradiction_recall": 0.865,
-    "mean_balance_score": 1.0366178428761652
+    "mean_support_recall": 0.8816666666666667,
+    "mean_contradiction_recall": 0.8983333333333333,
+    "mean_balance_score": 1.0189035916824196,
+    "run_config_hash": "cf8e261166ccf837"
   },
   "hybrid": {
     "n_claims": 300,
     "n_errors": 0,
-    "mean_support_recall": 0.9522222222222223,
-    "mean_contradiction_recall": 0.9572222222222223,
-    "mean_balance_score": 1.0052508751458575
+    "mean_support_recall": 0.9283333333333333,
+    "mean_contradiction_recall": 0.9616666666666667,
+    "mean_balance_score": 1.0359066427289048,
+    "run_config_hash": "5a05d629a6be902e"
   },
   "queryreform": {
     "n_claims": 300,
     "n_errors": 0,
-    "mean_support_recall": 0.8566666666666667,
-    "mean_contradiction_recall": 0.9266666666666666,
-    "mean_balance_score": 1.0817120622568093
+    "mean_support_recall": 0.9172222222222223,
+    "mean_contradiction_recall": 0.935,
+    "mean_balance_score": 1.019382192610539,
+    "run_config_hash": "49c61c90c1ca1360"
   }
 }

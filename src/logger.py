@@ -59,7 +59,10 @@ CREATE TABLE IF NOT EXISTS runs (
     claim           TEXT    NOT NULL,
     method          TEXT    NOT NULL,
     top_k           INTEGER NOT NULL,
+    retrieval_candidate_k INTEGER,
+    final_top_k     INTEGER,
     prompt_variant  TEXT    NOT NULL,
+    run_config_hash TEXT,
     reformulated_query TEXT,
     verdict         TEXT    NOT NULL,
     support_recall      REAL,
@@ -80,6 +83,23 @@ CREATE_IDX_METHOD    = "CREATE INDEX IF NOT EXISTS idx_method    ON runs (method
 CREATE_IDX_PROMPT    = "CREATE INDEX IF NOT EXISTS idx_prompt    ON runs (prompt_variant);"
 CREATE_IDX_INV       = "CREATE INDEX IF NOT EXISTS idx_inv       ON runs (investigation);"
 CREATE_IDX_TIMESTAMP = "CREATE INDEX IF NOT EXISTS idx_timestamp ON runs (timestamp);"
+CREATE_IDX_RUNCFG    = "CREATE INDEX IF NOT EXISTS idx_runcfg    ON runs (run_config_hash);"
+
+
+def _ensure_optional_columns(conn: sqlite3.Connection) -> None:
+    """
+    Backward-compatible schema evolution for existing local DBs.
+    Adds missing columns introduced after the initial table version.
+    """
+    rows = conn.execute("PRAGMA table_info(runs)").fetchall()
+    existing_columns = {row["name"] for row in rows}
+
+    if "retrieval_candidate_k" not in existing_columns:
+        conn.execute("ALTER TABLE runs ADD COLUMN retrieval_candidate_k INTEGER")
+    if "final_top_k" not in existing_columns:
+        conn.execute("ALTER TABLE runs ADD COLUMN final_top_k INTEGER")
+    if "run_config_hash" not in existing_columns:
+        conn.execute("ALTER TABLE runs ADD COLUMN run_config_hash TEXT")
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +114,12 @@ def init_db(db_path: str = DB_PATH) -> None:
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     with _connect(db_path) as conn:
         conn.execute(CREATE_RUNS_TABLE)
+        _ensure_optional_columns(conn)
         conn.execute(CREATE_IDX_METHOD)
         conn.execute(CREATE_IDX_PROMPT)
         conn.execute(CREATE_IDX_INV)
         conn.execute(CREATE_IDX_TIMESTAMP)
+        conn.execute(CREATE_IDX_RUNCFG)
     print(f"DB ready at {db_path}")
 
 
@@ -147,11 +169,18 @@ def log_run(
 
     claim              = pipeline_output.get("claim", "")
     method             = pipeline_output.get("method", "")
-    top_k              = len(pipeline_output.get("retrieved", []))
+    final_top_k        = pipeline_output.get("final_top_k")
+    retrieved          = pipeline_output.get("retrieved", [])
+    if final_top_k is None:
+        final_top_k = len(retrieved)
+    top_k = int(final_top_k)
+    retrieval_candidate_k = pipeline_output.get("retrieval_candidate_k")
+    if retrieval_candidate_k is not None:
+        retrieval_candidate_k = int(retrieval_candidate_k)
     prompt_variant     = pipeline_output.get("prompt_variant", "")
+    run_config_hash    = pipeline_output.get("run_config_hash")
     reformulated_query = pipeline_output.get("reformulated_query", None)
     verdict            = pipeline_output.get("verdict", "")
-    retrieved          = pipeline_output.get("retrieved", [])
 
     # eval_scores from evaluator.py
     support_recall       = None
@@ -197,7 +226,10 @@ def log_run(
         claim,
         method,
         top_k,
+        retrieval_candidate_k,
+        final_top_k,
         prompt_variant,
+        run_config_hash,
         reformulated_query,
         verdict,
         support_recall,
@@ -215,15 +247,18 @@ def log_run(
 
     insert_sql = """
     INSERT INTO runs (
-        run_uuid, timestamp, claim, method, top_k, prompt_variant,
+        run_uuid, timestamp, claim, method, top_k, retrieval_candidate_k, final_top_k, prompt_variant, run_config_hash,
         reformulated_query, verdict,
         support_recall, contradiction_recall, balance_score,
         faithfulness, answer_relevancy, context_precision, context_recall,
         ragas_pass, retrieved_json, ragas_json, investigation
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     with _connect(db_path) as conn:
+        conn.execute(CREATE_RUNS_TABLE)
+        _ensure_optional_columns(conn)
+        conn.execute(CREATE_IDX_RUNCFG)
         cursor = conn.execute(insert_sql, row)
         row_id = cursor.lastrowid
 
@@ -306,6 +341,7 @@ def get_runs(
     investigation: Optional[str] = None,
     method: Optional[str] = None,
     prompt_variant: Optional[str] = None,
+    run_config_hash: Optional[str] = None,
     limit: int = 1000,
     db_path: str = DB_PATH,
 ) -> list[dict]:
@@ -325,12 +361,17 @@ def get_runs(
     if prompt_variant:
         conditions.append("prompt_variant = ?")
         params.append(prompt_variant)
+    if run_config_hash:
+        conditions.append("run_config_hash = ?")
+        params.append(run_config_hash)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     sql   = f"SELECT * FROM runs {where} ORDER BY timestamp DESC LIMIT ?"
     params.append(limit)
 
     with _connect(db_path) as conn:
+        conn.execute(CREATE_RUNS_TABLE)
+        _ensure_optional_columns(conn)
         rows = conn.execute(sql, params).fetchall()
 
     return [dict(row) for row in rows]
@@ -357,6 +398,8 @@ def get_summary(db_path: str = DB_PATH) -> dict:
     ORDER BY investigation, method
     """
     with _connect(db_path) as conn:
+        conn.execute(CREATE_RUNS_TABLE)
+        _ensure_optional_columns(conn)
         rows = conn.execute(sql).fetchall()
     return [dict(row) for row in rows]
 
@@ -364,13 +407,18 @@ def get_summary(db_path: str = DB_PATH) -> dict:
 def export_to_json(
     out_path: str,
     investigation: Optional[str] = None,
+    run_config_hash: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> None:
     """
     Export runs (optionally filtered by investigation) to a JSON file.
     Called by investigation scripts to produce results/*.json files.
     """
-    rows = get_runs(investigation=investigation, db_path=db_path)
+    rows = get_runs(
+        investigation=investigation,
+        run_config_hash=run_config_hash,
+        db_path=db_path
+    )
 
     # Expand stored JSON strings back to dicts
     for row in rows:

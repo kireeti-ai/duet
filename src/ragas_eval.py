@@ -96,9 +96,9 @@ def _build_ragas_embeddings():
     Same model as the retriever — already cached on disk, no second download.
     """
     return RagasHFEmbeddings(
-        model_name=RAGAS_EMBED_MODEL,
-        model_kwargs={"device": _detect_device()},
-        encode_kwargs={"normalize_embeddings": True},
+        model=RAGAS_EMBED_MODEL,
+        device=_detect_device(),
+        normalize_embeddings=True,
     )
 
 

@@ -8,7 +8,7 @@ Returns a structured verdict with citations.
 from groq import Groq
 from src.config import (
     GROQ_API_KEY, GROQ_VERDICT_MODEL, RETRIEVAL_METHOD,
-    RETRIEVAL_CANDIDATE_K, TOP_K
+    RETRIEVAL_CANDIDATE_K, TOP_K, PROMPT_VARIANT
 )
 from src.retriever import retrieve
 from src.reranker import rerank
@@ -60,7 +60,7 @@ def run_pipeline(claim: str, method: str = RETRIEVAL_METHOD) -> dict:
     print(f"Reranked to top {len(reranked)}")
 
     # Step 4: build prompt
-    prompt = build_verdict_prompt(claim, reranked)
+    prompt = build_verdict_prompt(claim, reranked, variant=PROMPT_VARIANT)
 
     # Step 5: generate verdict
     print("Generating verdict...")
@@ -77,6 +77,9 @@ def run_pipeline(claim: str, method: str = RETRIEVAL_METHOD) -> dict:
     return {
         "claim": claim,
         "method": method,
+        "prompt_variant": PROMPT_VARIANT,
+        "retrieval_candidate_k": RETRIEVAL_CANDIDATE_K,
+        "final_top_k": TOP_K,
         "reformulated_query": reformulated,
         "retrieved": reranked,
         "verdict": verdict_text
