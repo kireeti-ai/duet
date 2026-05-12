@@ -5,6 +5,7 @@ Unit tests for src/evaluator.py
 import pytest
 from src.evaluator import (
     compute_recall,
+    evaluate_batch,
     evaluate_single,
     load_scifact_labels
 )
@@ -121,6 +122,101 @@ def test_evaluate_single_none_type():
     retrieved = [{"id": "pmid_123"}]
     result = evaluate_single("3", retrieved, labels)
     assert result["recall"] == 0.0
+
+
+# --- evaluate_batch ---
+
+def test_evaluate_batch_uses_scifact_claim_field(monkeypatch):
+    import src.retriever as retriever_module
+
+    monkeypatch.setattr(
+        retriever_module,
+        "retrieve",
+        lambda claim_text, method="dense": [{"id": "pmid_123"}]
+    )
+
+    claims = [{"id": "1", "claim": "Aspirin reduces fever"}]
+    labels = {
+        "1": {
+            "claim": "Aspirin reduces fever",
+            "supporting_ids": {"pmid_123"},
+            "contradicting_ids": set(),
+            "claim_type": "SUPPORT",
+        }
+    }
+
+    result = evaluate_batch(claims, labels, method="dense")
+
+    assert result["support_claims_evaluated"] == 1
+    assert result["contradict_claims_evaluated"] == 0
+    assert result["skipped"] == 0
+    assert result["avg_support_recall"] == 1.0
+
+
+def test_evaluate_batch_falls_back_to_text_field(monkeypatch):
+    import src.retriever as retriever_module
+
+    monkeypatch.setattr(
+        retriever_module,
+        "retrieve",
+        lambda claim_text, method="dense": [{"id": "pmid_456"}]
+    )
+
+    claims = [{"id": "2", "text": "Aspirin has no effect"}]
+    labels = {
+        "2": {
+            "claim": "Aspirin has no effect",
+            "supporting_ids": set(),
+            "contradicting_ids": {"pmid_456"},
+            "claim_type": "CONTRADICT",
+        }
+    }
+
+    result = evaluate_batch(claims, labels, method="dense")
+
+    assert result["support_claims_evaluated"] == 0
+    assert result["contradict_claims_evaluated"] == 1
+    assert result["skipped"] == 0
+    assert result["avg_contradiction_recall"] == 1.0
+
+
+def test_evaluate_batch_queryreform_passes_reformulated_query(monkeypatch):
+    import src.retriever as retriever_module
+    import src.reformulator as reformulator_module
+
+    captured = {}
+
+    def fake_reformulate_query(claim_text):
+        captured["reformulator_input"] = claim_text
+        return "aspirin no effect inconsistent findings"
+
+    def fake_retrieve(claim_text, method="dense", reformulated_query=None):
+        captured["retrieve_claim"] = claim_text
+        captured["retrieve_method"] = method
+        captured["retrieve_reformulated_query"] = reformulated_query
+        return [{"id": "pmid_123"}]
+
+    monkeypatch.setattr(reformulator_module, "reformulate_query", fake_reformulate_query)
+    monkeypatch.setattr(retriever_module, "retrieve", fake_retrieve)
+
+    claims = [{"id": "1", "claim": "Aspirin reduces fever"}]
+    labels = {
+        "1": {
+            "claim": "Aspirin reduces fever",
+            "supporting_ids": {"pmid_123"},
+            "contradicting_ids": set(),
+            "claim_type": "SUPPORT",
+        }
+    }
+
+    result = evaluate_batch(claims, labels, method="queryreform")
+
+    assert result["support_claims_evaluated"] == 1
+    assert result["skipped"] == 0
+    assert captured["reformulator_input"] == "Aspirin reduces fever"
+    assert captured["retrieve_claim"] == "Aspirin reduces fever"
+    assert captured["retrieve_method"] == "queryreform"
+    assert captured["retrieve_reformulated_query"] == "aspirin no effect inconsistent findings"
 
 
 # --- load_scifact_labels ---

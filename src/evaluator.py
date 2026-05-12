@@ -98,6 +98,7 @@ def evaluate_batch(claims: list, labels: dict, method: str = "dense") -> dict:
     Evaluates all claims and computes Support Recall, Contradiction Recall, Balance Score.
     """
     from src.retriever import retrieve
+    from src.reformulator import reformulate_query
 
     support_recalls = []
     contradict_recalls = []
@@ -106,7 +107,14 @@ def evaluate_batch(claims: list, labels: dict, method: str = "dense") -> dict:
     total = len(claims)
     for i, claim in enumerate(claims):
         claim_id = str(claim["id"])
-        claim_text = claim["text"]
+        claim_text = claim.get("claim")
+        if claim_text is None:
+            claim_text = claim.get("text")
+
+        if not isinstance(claim_text, str) or not claim_text.strip():
+            print(f"  Error on claim {claim_id}: missing claim text field ('claim' or 'text')")
+            skipped += 1
+            continue
 
         if claim_id not in labels:
             skipped += 1
@@ -117,7 +125,15 @@ def evaluate_batch(claims: list, labels: dict, method: str = "dense") -> dict:
             continue
 
         try:
-            retrieved = retrieve(claim_text, method=method)
+            if method == "queryreform":
+                reformulated_query = reformulate_query(claim_text)
+                retrieved = retrieve(
+                    claim_text,
+                    method=method,
+                    reformulated_query=reformulated_query
+                )
+            else:
+                retrieved = retrieve(claim_text, method=method)
             result = evaluate_single(claim_id, retrieved, labels)
 
             if labels[claim_id]["claim_type"] == "SUPPORT":
