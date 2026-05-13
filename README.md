@@ -94,8 +94,13 @@ tar -xzf data/scifact/data.tar.gz -C data/scifact/
 PYTHONPATH=. python src/indexer.py
 
 # 7. Run the app
-streamlit run app.py
+streamlit run app.py --server.fileWatcherType none
 ```
+
+The Streamlit app runs with fixed best-known defaults:
+- Retrieval method auto-selected from `results/inv01_summary.json` by highest Balance Score
+- `RETRIEVAL_CANDIDATE_K`, `TOP_K`, and `PROMPT_VARIANT` taken from `src/config.py`
+- If Streamlit shows watcher-related import noise, keep `--server.fileWatcherType none`
 
 ---
 
@@ -141,6 +146,37 @@ All results are saved to `results/` as JSON and logged to SQLite at `results/equ
 
 ---
 
+## Deploying to Hugging Face Spaces
+
+Use a Streamlit Space and point it at `app.py`.
+
+### Files needed
+- `app.py`
+- `api.py`
+- `src/`
+- `.streamlit/config.toml`
+- `runtime.txt`
+- `requirements.txt`
+- `data/` and `chroma_db/` if you want the built app to run immediately
+
+### Space settings
+- **SDK:** Streamlit
+- **Main file:** `app.py`
+- **Python version:** 3.11
+
+### Secrets
+Set these in Space secrets:
+- `GROQ_API_KEY`
+- `LANGCHAIN_API_KEY` if tracing is enabled
+
+### Notes
+- The app uses the fixed best method from `results/inv01_summary.json`.
+- The SciFact corpus is a static AllenAI snapshot, not a live data source.
+- If you want the Space to build from scratch, include the dataset and existing indexes or add a separate indexing build step.
+- The included Streamlit config keeps the UI dark and disables file-watcher noise.
+
+---
+
 ## Project Structure
 
 ```
@@ -172,7 +208,7 @@ equipoise-rag/
 |   +-- inv03_prompts.py         Prompt variant comparison with RAGAS scoring (50 claims)
 |
 +-- results/                     JSON outputs + SQLite database
-+-- tests/                       42 unit tests (all passing)
++-- tests/                       68 unit tests (all passing)
 +-- app.py                       Streamlit interface
 +-- requirements.txt             All dependencies
 +-- .env.example                 Environment variable template

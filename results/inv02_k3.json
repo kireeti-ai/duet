@@ -1,128 +1,14 @@
 [
   {
-    "id": 2467,
-    "run_uuid": "ce7a495c-652a-4915-9f2b-cc1f7a9562c8",
-    "timestamp": "2026-05-12T20:34:27.413556+00:00",
-    "claim": "Citrullinated proteins externalized in neutrophil extracellular traps act indirectly to disrupt the inflammatory cycle.",
-    "method": "dense",
-    "top_k": 3,
-    "prompt_variant": "structured",
-    "reformulated_query": null,
-    "verdict": "VERDICT: Supported\n\nSUPPORTING EVIDENCE:\nThe study (PMID: 11328820) found that neutrophils from patients with rheumatoid arthritis display enhanced NET formation, which exposes citrullinated autoantigens and stimulates inflammatory responses. \nThe research (PMID: 30041340) identified citrullinated histone 4 contained in NETs as a target of antibodies in rheumatoid arthritis patients, suggesting a connection between NETosis and the inflammatory cycle. \nAlthough not directly addressing the claim, the study (PMID: 1800734) on CXCR2-mediated NET formation in cystic fibrosis airway inflammation implies that NETs can contribute to inflammation and potentially disrupt the inflammatory cycle in other diseases.\n\nCONTRADICTING EVIDENCE:\nNone of the provided abstracts directly contradict the claim that citrullinated proteins externalized in neutrophil extracellular traps act indirectly to disrupt the inflammatory cycle.\n\nMODERATING FACTORS:\nThe claim may be affected by the specific disease context, such as rheumatoid arthritis or cystic fibrosis, and the presence of autoantibodies or other inflammatory mediators.\n\nCONFIDENCE: Moderate-to-High\nThe confidence level is moderate-to-high due to the presence of multiple studies supporting the role of NETs and citrullinated proteins in inflammatory diseases, although the direct evidence for the claim is largely indirect and based on associations between NETosis, citrullination, and inflammation.",
-    "support_recall": null,
-    "contradiction_recall": 1.0,
-    "balance_score": null,
-    "faithfulness": null,
-    "answer_relevancy": null,
-    "context_precision": null,
-    "context_recall": null,
-    "ragas_pass": 0,
-    "investigation": "inv02_k3",
-    "retrieval_candidate_k": 30,
-    "final_top_k": 3,
-    "run_config_hash": "f305fef077b0abb2",
-    "retrieved": [
-      {
-        "id": "11328820",
-        "title": "NETs are a source of citrullinated autoantigens and stimulate inflammatory responses in rheumatoid arthritis.",
-        "score": 0.8127838373184204,
-        "rerank_score": 4.427539825439453,
-        "method": "dense"
-      },
-      {
-        "id": "30041340",
-        "title": "Antibodies from patients with rheumatoid arthritis target citrullinated histone 4 contained in neutrophils extracellular traps.",
-        "score": 0.7911298871040344,
-        "rerank_score": 3.408644199371338,
-        "method": "dense"
-      },
-      {
-        "id": "1800734",
-        "title": "CXCR2 mediates NADPH oxidase\u2013independent neutrophil extracellular trap formation in cystic fibrosis airway inflammation",
-        "score": 0.7558352947235107,
-        "rerank_score": 2.1533639430999756,
-        "method": "dense"
-      }
-    ],
-    "ragas_scores": {
-      "faithfulness": null,
-      "answer_relevancy": null,
-      "context_precision": null,
-      "context_recall": null,
-      "pass_thresholds": false,
-      "metric_count": 0,
-      "error": "RAGAS evaluation failed: All metrics must be initialised metric objects, e.g: metrics=[BleuScore(), AspectCritic()]",
-      "latency_seconds": 75.14474374998827,
-      "ground_truth_used": true
-    }
-  },
-  {
-    "id": 2466,
-    "run_uuid": "2a33220c-d8f9-4395-8a7e-8aec3df7b5be",
-    "timestamp": "2026-05-12T20:28:50.888551+00:00",
-    "claim": "Medications to treat obesity are highly effective.",
-    "method": "dense",
-    "top_k": 3,
-    "prompt_variant": "structured",
-    "reformulated_query": null,
-    "verdict": "VERDICT: Contradicted\n\nSUPPORTING EVIDENCE:\nNone of the provided abstracts strongly support the claim that medications to treat obesity are highly effective, but (PMID: 7552215) shows that certain medications can modestly reduce weight and improve health status.\n\nCONTRADICTING EVIDENCE:\n(PMID: 5839365) suggests that the development of effective anti-obesity drugs has been challenging due to the complexity of energy balance regulation and the high risk of adverse effects, and (PMID: 7098463) implies that surgical interventions may be more effective for weight loss and diabetes control than conventional therapy, including medications.\n\nMODERATING FACTORS:\nThe effectiveness of obesity medications may depend on the specific medication, population, and duration of treatment, as well as the presence of comorbidities such as diabetes, and the use of combination therapies or polytherapeutic strategies may be necessary to achieve significant weight loss.\n\nCONFIDENCE: Moderate-to-High\nThe confidence level is moderate-to-high because the provided abstracts include a meta-analysis of randomized controlled trials (PMID: 7552215) and a randomized controlled trial (PMID: 7098463), which are considered high-quality evidence, but the results are not uniformly supportive of the claim, and the abstracts highlight the challenges and limitations of developing effective anti-obesity medications.",
-    "support_recall": null,
-    "contradiction_recall": 1.0,
-    "balance_score": null,
-    "faithfulness": null,
-    "answer_relevancy": null,
-    "context_precision": null,
-    "context_recall": null,
-    "ragas_pass": 0,
-    "investigation": "inv02_k3",
-    "retrieval_candidate_k": 30,
-    "final_top_k": 3,
-    "run_config_hash": "f305fef077b0abb2",
-    "retrieved": [
-      {
-        "id": "5839365",
-        "title": "Anti-obesity drugs: past, present and future",
-        "score": 0.7326284646987915,
-        "rerank_score": 4.067146301269531,
-        "method": "dense"
-      },
-      {
-        "id": "7552215",
-        "title": "Long term pharmacotherapy for obesity and overweight: updated meta-analysis.",
-        "score": 0.7340778708457947,
-        "rerank_score": 2.977509021759033,
-        "method": "dense"
-      },
-      {
-        "id": "7098463",
-        "title": "Adjustable gastric banding and conventional therapy for type 2 diabetes: a randomized controlled trial.",
-        "score": 0.6575612425804138,
-        "rerank_score": -0.35356569290161133,
-        "method": "dense"
-      }
-    ],
-    "ragas_scores": {
-      "faithfulness": null,
-      "answer_relevancy": null,
-      "context_precision": null,
-      "context_recall": null,
-      "pass_thresholds": false,
-      "metric_count": 0,
-      "error": "RAGAS evaluation failed: All metrics must be initialised metric objects, e.g: metrics=[BleuScore(), AspectCritic()]",
-      "latency_seconds": 19.521190790997935,
-      "ground_truth_used": true
-    }
-  },
-  {
-    "id": 2465,
-    "run_uuid": "35aab9fd-a4ae-4f8d-84bd-c7085ed94e7f",
-    "timestamp": "2026-05-12T19:59:11.622730+00:00",
+    "id": 2478,
+    "run_uuid": "42b6f3e2-6bfd-439e-859f-dd318e28aee5",
+    "timestamp": "2026-05-13T01:49:22.150320+00:00",
     "claim": "Enhanced early production of inflammatory chemokines damages viral control in the lung.",
     "method": "dense",
     "top_k": 3,
     "prompt_variant": "structured",
     "reformulated_query": null,
-    "verdict": "VERDICT: Contradicted\n\nSUPPORTING EVIDENCE:\nNone of the provided abstracts directly support the claim that enhanced early production of inflammatory chemokines damages viral control in the lung.\n\nCONTRADICTING EVIDENCE:\nThe study (PMID: 19005293) found that memory CD4+ T cell-induced production of innate inflammatory cytokines and chemokines enhances early control of virus, contradicting the claim; the study (PMID: 26068103) showed that IL-10 can attenuate acute inflammatory processes and late inflammatory changes, suggesting that not all inflammatory responses are detrimental to viral control; the study (PMID: 15425958) demonstrated that the human cytomegalovirus-encoded IL-10 homolog inhibits maturation of dendritic cells, which could potentially impair viral control, but this is more related to the virus's immune evasion strategy rather than the direct effect of inflammatory chemokines on viral control.\n\nMODERATING FACTORS:\nThe timing and type of inflammatory response, as well as the specific virus and immune cells involved, may affect the relationship between inflammatory chemokine production and viral control.\n\nCONFIDENCE: Moderate-to-High\nThe confidence level is moderate-to-high because the provided studies offer some insights into the complex interactions between inflammatory responses and viral control, but more research is needed to fully understand the relationship between enhanced early production of inflammatory chemokines and viral control in the lung.",
+    "verdict": "VERDICT: Contradicted\n\nSUPPORTING EVIDENCE:\nNone of the provided abstracts directly support the claim that enhanced early production of inflammatory chemokines damages viral control in the lung.\n\nCONTRADICTING EVIDENCE:\nThe study (PMID: 19005293) found that memory CD4+ T cell-induced production of innate inflammatory cytokines and chemokines in the lung leads to early control of virus, contradicting the claim. \n\nMODERATING FACTORS:\nThe timing and type of immune response, such as the polarization of T cells (TH1 or TH17) and the presence of specific cytokines (e.g., IL-10), may affect the relationship between inflammatory chemokine production and viral control.\n\nCONFIDENCE: Moderate-to-High\nThe confidence level is moderate-to-high because the contradicting evidence comes from a study that directly investigated the relationship between inflammatory chemokine production and viral control, providing a clear mechanism by which enhanced early production of inflammatory chemokines can lead to improved viral control, rather than damage.",
     "support_recall": null,
     "contradiction_recall": 1.0,
     "balance_score": null,
@@ -134,7 +20,7 @@
     "investigation": "inv02_k3",
     "retrieval_candidate_k": 30,
     "final_top_k": 3,
-    "run_config_hash": "f305fef077b0abb2",
+    "run_config_hash": "b7adce8380e1b0b2",
     "retrieved": [
       {
         "id": "19005293",
@@ -166,7 +52,7 @@
       "pass_thresholds": false,
       "metric_count": 0,
       "error": "RAGAS evaluation failed: All metrics must be initialised metric objects, e.g: metrics=[BleuScore(), AspectCritic()]",
-      "latency_seconds": 19.876389375000144,
+      "latency_seconds": 20.35582220800279,
       "ground_truth_used": true
     }
   }
