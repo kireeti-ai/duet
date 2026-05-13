@@ -219,6 +219,7 @@ __marimo__/
 
 # Equipoise local artifacts
 /.env
+/results/equipoise.db
 /venv/
 /chroma_db/
 /data/
