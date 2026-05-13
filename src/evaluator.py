@@ -107,10 +107,7 @@ def evaluate_batch(claims: list, labels: dict, method: str = "dense") -> dict:
     total = len(claims)
     for i, claim in enumerate(claims):
         claim_id = str(claim["id"])
-        claim_text = claim.get("claim")
-        if claim_text is None:
-            claim_text = claim.get("text")
-
+        claim_text = claim.get("claim", claim.get("text", ""))
         if not isinstance(claim_text, str) or not claim_text.strip():
             print(f"  Error on claim {claim_id}: missing claim text field ('claim' or 'text')")
             skipped += 1
