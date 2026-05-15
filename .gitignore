@@ -220,10 +220,16 @@ __marimo__/
 # Equipoise local artifacts
 /.env
 /results/equipoise.db
+/results/*.json
 /venv/
 /chroma_db/
 /data/
 /__pycache__/
+
+# Reports & Context
+*.tex
+AI_REPORT_CONTEXT.md
+PROJECT_SPEC.md
 
 # macOS
 .DS_Store

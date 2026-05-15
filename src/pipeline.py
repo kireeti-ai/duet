@@ -64,7 +64,20 @@ def run_pipeline(claim: str, method: str = RETRIEVAL_METHOD) -> dict:
 
     # Step 5: generate verdict
     print("Generating verdict...")
-    client = Groq(api_key=GROQ_API_KEY)
+    
+    import os
+    from openai import OpenAI
+    from groq import Groq
+    
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if openrouter_key:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=openrouter_key,
+        )
+    else:
+        client = Groq(api_key=GROQ_API_KEY)
+        
     response = client.chat.completions.create(
         model=GROQ_VERDICT_MODEL,
         messages=[{"role": "user", "content": prompt}],

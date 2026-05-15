@@ -103,12 +103,12 @@ Run all scripts with: `PYTHONPATH=. python src/filename.py`
 | src/config.py | DONE | All settings. RETRIEVAL_METHOD, TOP_K, PROMPT_VARIANT |
 | src/indexer.py | DONE | Loads from local corpus.jsonl. Uses MPS on Apple Silicon |
 | src/retriever.py | DONE | dense, bm25, hybrid, queryreform all working. `load_resources()` now uses module-level cache and loads once per process. |
-| src/reformulator.py | DONE | Groq llama-3.1-8b rewrites claim with negation language |
+| src/reformulator.py | DONE | llama-3.3-70b (via OpenRouter) rewrites claim with negation language |
 | src/reranker.py | DONE | cross-encoder/ms-marco-MiniLM-L-6-v2. Module-level cache implemented via `_get_cross_encoder()` (loaded once per process). |
 | src/verdict_prompt.py | DONE | 3 variants: neutral, biased, structured |
 | src/pipeline.py | DONE | Full end-to-end pipeline working |
 | src/evaluator.py | DONE | Support Recall, Contradiction Recall, Balance Score |
-| src/ragas_eval.py | DONE | RAGAS faithfulness, answer_relevancy, context_precision, context_recall. Uses Groq llama-3.3-70b via OpenAI-compatible client. RAGAS 0.2.x API (instantiated metric objects, llm_factory). |
+| src/ragas_eval.py | DONE | RAGAS faithfulness, answer_relevancy, context_precision, context_recall. Uses OpenRouter llama-3.3-70b via LangchainLLMWrapper. Multi-version compatible (0.2.x–0.4.x). |
 | src/logger.py | DONE | LangSmith tracing + SQLite storage at results/equipoise.db |
 | src/utils.py | EMPTY | Shared utilities — low priority |
 
@@ -130,23 +130,40 @@ Current runtime note: `test_pipeline.py` uses live Groq calls and can fail with 
 
 | File | Status | Notes |
 |---|---|---|
-| investigations/inv01_retrieval.py | COMPLETE | Resume-safe script. `results/inv01_*.json` and `results/inv01_summary.json` exist with 300 claims per strategy (1200 runs logged). |
-| investigations/inv02_topk.py | NOT CREATED | File does not exist yet. |
-| investigations/inv03_prompts.py | NOT CREATED | File does not exist yet. |
+| investigations/inv01_retrieval.py | COMPLETE | Resume-safe. 300 claims × 4 strategies = 1200 runs logged. Results in `results/inv01_*.json`. |
+| investigations/inv02_topk.py | COMPLETE | Resume-safe. 300 claims × 3 K-values (3,5,10) = 900 runs logged. Results in `results/inv02_k*.json`. |
+| investigations/inv03_prompts.py | COMPLETE | 4 claims × 3 prompt variants with RAGAS scoring. Results in `results/inv03_*.json`. |
 
-INV-01 summary snapshot (`results/inv01_summary.json`):
-- dense: support 0.9328, contradiction 0.9794, balance 1.0500
-- bm25: support 0.8344, contradiction 0.8650, balance 1.0366
-- hybrid: support 0.9522, contradiction 0.9572, balance 1.0053
-- queryreform: support 0.8567, contradiction 0.9267, balance 1.0817 (highest balance)
+INV-01 actual results (`results/inv01_summary.json`):
+- dense: support 0.9239, contradiction 0.9617, balance 1.0409 (highest balance)
+- bm25: support 0.8817, contradiction 0.8983, balance 1.0189
+- hybrid: support 0.9283, contradiction 0.9617, balance 1.0359
+- queryreform: support 0.9172, contradiction 0.9350, balance 1.0194
 
-### app.py / api.py — NOT STARTED
+INV-02 actual results (`results/inv02_summary.json`) — hybrid strategy:
+- K=3: support 0.9033, contradiction 0.9250, balance 1.0240
+- K=5: support 0.9283, contradiction 0.9617, balance 1.0360 (Goldilocks — highest balance)
+- K=10: support 0.9650, contradiction 0.9833, balance 1.0190
 
-Both files currently exist but are empty.
+INV-03 actual results (`results/inv03_summary.json`) — RAGAS scores (4 claims):
+- neutral: faithfulness 0.465, answer_relevancy 0.457, ctx_precision 0.633, ctx_recall 0.781
+- biased: faithfulness 0.640, answer_relevancy 0.709, ctx_precision 0.633, ctx_recall 0.906
+- structured: faithfulness 0.743, answer_relevancy 0.958, ctx_precision 0.650, ctx_recall 0.611 (winner)
 
-### requirements.txt — MISSING CONTENT
+### app.py — COMPLETE
 
-`requirements.txt` exists but is empty (0 lines), so dependency installation is not reproducible from repo state alone.
+Streamlit UI with dark glassmorphism theme (Outfit font, gradient background). Claim text area, runs hybrid retrieval at K=5, verdict card with processing time, expandable PMID-tagged abstract cards. Wired to `run_pipeline()`.
+
+### api.py — COMPLETE
+
+Python application helper layer (not a REST server):
+- `pick_best_method()` — reads `inv01_summary.json`, returns highest Balance Score strategy
+- `build_runtime_config()` — assembles config dict from best-known defaults
+- `run_claim(claim)` — single entry point: validates, runs pipeline, returns structured result
+
+### requirements.txt — COMPLETE
+
+14 pinned packages: chromadb==1.5.8, rank-bm25==0.2.2, sentence-transformers==5.4.1, torch==2.11.0, tqdm==4.67.3, groq==0.37.1, python-dotenv==1.2.2, ragas==0.4.3, datasets==4.8.5, openai==2.33.0, langsmith==0.8.0, streamlit==1.57.0, pytest==9.0.3
 
 ---
 
@@ -242,20 +259,15 @@ CLAIMS_DEV_PATH = "data/scifact/data/claims_dev.jsonl"
 
 ## What Is Left — In Order
 
-### Step 1 — Build investigations/inv02_topk.py
-Implement K-sensitivity runner (K=3,5,10) on best INV-01 method and export `results/inv02_k*.json`.
+### Step 1 — Stabilize test_pipeline.py DONE: investigations complete
+All three investigations are complete. The only remaining code-quality issue is `test_pipeline.py` making live Groq calls. Add mock/stub for Groq client so pipeline tests pass deterministically without hitting the API.
 
-### Step 2 — Build investigations/inv03_prompts.py
-Implement prompt-sensitivity runner (neutral/biased/structured) over 50 claims with RAGAS scoring and JSON exports.
-
-### Step 3 — Implement app.py (and optional API wrapper in api.py)
-Create Streamlit UI for claim entry, method selector, K selector, prompt variant selector, and verdict/evidence display.
-
-### Step 4 — Stabilize tests and packaging
-Add deterministic pipeline test strategy (mock/stub Groq) and populate `requirements.txt`.
-
-### Step 5 — Refresh README.md
-Publish measured results (INV-01 complete; INV-02/03 pending), reproducible setup, and architecture updates.
+### Step 2 — Refresh README.md
+Publish measured results from all three investigations:
+- INV-01: dense wins balance score (1.0409)
+- INV-02: K=5 is Goldilocks (balance 1.0360)
+- INV-03: structured prompt wins (faithfulness 0.743, relevancy 0.958)
+Update setup instructions to match current requirements.txt and OpenRouter migration.
 
 ---
 
@@ -281,7 +293,7 @@ verdict_prompt.py
 builds structured prompt (neutral/biased/structured)
     |
     v
-Groq llama-3.3-70b
+OpenRouter meta-llama/llama-3.3-70b-instruct
 generates verdict
     |
     v
@@ -308,6 +320,5 @@ measures faithfulness, answer relevance, context precision
 
 ## Next Immediate Action
 
-1. Use `results/inv01_summary.json` to choose the strategy for INV-02 (current highest Balance Score: queryreform).
-2. Implement `investigations/inv02_topk.py`.
-3. Make `test_pipeline.py` resilient to Groq quota limits by mocking live API calls.
+1. Mock Groq/OpenRouter calls in `test_pipeline.py` so all 44 tests pass deterministically.
+2. Refresh README.md with measured INV-01/02/03 results and updated setup instructions.

@@ -10,8 +10,8 @@ WANDB_API_KEY = os.getenv("WANDB_API_KEY")
 HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 
 # --- Models ---
-GROQ_VERDICT_MODEL = "llama-3.3-70b-versatile"
-GROQ_REFORMULATOR_MODEL = "llama-3.1-8b-instant"
+GROQ_VERDICT_MODEL = "meta-llama/llama-3.3-70b-instruct"
+GROQ_REFORMULATOR_MODEL = "meta-llama/llama-3.3-70b-instruct"
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 

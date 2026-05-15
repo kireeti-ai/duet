@@ -59,7 +59,7 @@ def mock_pipeline_dependencies(monkeypatch):
 
     class _FakeCompletions:
         @staticmethod
-        def create(model, messages, temperature, max_tokens):
+        def create(model, messages, temperature, max_tokens, **kwargs):
             class _Message:
                 content = FAKE_VERDICT
 
@@ -74,15 +74,18 @@ def mock_pipeline_dependencies(monkeypatch):
     class _FakeChat:
         completions = _FakeCompletions()
 
-    class FakeGroq:
-        def __init__(self, api_key=None):
+    class FakeClient:
+        def __init__(self, **kwargs):
             self.chat = _FakeChat()
 
     monkeypatch.setattr(pipeline, "retrieve", fake_retrieve)
     monkeypatch.setattr(pipeline, "rerank", fake_rerank)
     monkeypatch.setattr(pipeline, "reformulate_query", fake_reformulate_query)
     monkeypatch.setattr(pipeline, "build_verdict_prompt", fake_prompt)
-    monkeypatch.setattr(pipeline, "Groq", FakeGroq)
+    # pipeline.py does local imports inside run_pipeline(), so patch at source module
+    # level — not pipeline.Groq/pipeline.OpenAI which would have no effect.
+    monkeypatch.setattr("openai.OpenAI", FakeClient)
+    monkeypatch.setattr("groq.Groq", FakeClient)
 
 
 @pytest.fixture

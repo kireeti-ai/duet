@@ -14,7 +14,18 @@ def reformulate_query(claim: str) -> str:
     that includes both confirming and disconfirming language.
     This helps dense retrieval surface contradicting abstracts.
     """
-    client = Groq(api_key=GROQ_API_KEY)
+    import os
+    from openai import OpenAI
+    from groq import Groq
+    
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if openrouter_key:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=openrouter_key,
+        )
+    else:
+        client = Groq(api_key=GROQ_API_KEY)
 
     prompt = f"""You are a biomedical literature search expert.
 

@@ -1,329 +1,368 @@
-"""
-app.py
-Streamlit app for biomedical evidence synthesis.
-"""
-
-from __future__ import annotations
-
-import html
-import re
-from typing import Any
-
 import streamlit as st
+import time
+import re
+import html
+from src.pipeline import run_pipeline
 
-from api import run_claim
+# --- Page Config ---
+st.set_page_config(
+    page_title="Biomedical Claim Verification",
+    page_icon="🔬",
+    layout="wide",
+)
 
+# --- Custom CSS ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
 
-RESULT_KEY = "latest_result"
-ERROR_KEY = "latest_error"
+    html, body, [class*="css"] {
+        font-family: 'Outfit', sans-serif;
+    }
 
+    .main {
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+        color: #f8fafc;
+    }
 
-def _inject_styles() -> None:
-    st.markdown(
-        """
-        <style>
-        :root {
-            --ant-slate-dark: #141413;
-            --ant-slate-medium: #3d3d3a;
-            --ant-slate-light: #5e5d59;
-            --ant-night: #1b1b1a;
-            --ant-ivory-light: #faf9f5;
-            --ant-ivory-medium: #f0eee6;
-            --ant-cloud-light: #d1cfc5;
-            --ant-cloud-medium: #b0aea5;
-            --ant-accent: #c6613f;
-            --ant-white: #ffffff;
-        }
-        .stApp {
-            background: var(--ant-night);
-            color: var(--ant-ivory-light);
-        }
-        .block-container {
-            max-width: 880px;
-            padding-top: 3rem;
-            padding-bottom: 4rem;
-        }
-        h1, h2, h3 {
-            color: var(--ant-ivory-light);
-            letter-spacing: -0.01em;
-            font-weight: 700;
-        }
-        h1 {
-            font-weight: 800;
-        }
-        .header-card {
-            background: linear-gradient(180deg, #232321 0%, #191918 100%);
-            border: 1px solid #373632;
-            border-left: 4px solid var(--ant-accent);
-            border-radius: 14px;
-            padding: 0.95rem 1.1rem 0.9rem 1.1rem;
-            margin-bottom: 1.25rem;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-        }
-        .header-card h1 {
-            color: var(--ant-ivory-light) !important;
-        }
-        .header-title {
-            margin: 0;
-            color: var(--ant-ivory-light);
-            font-size: 2.15rem;
-            line-height: 1.1;
-            font-weight: 800;
-            letter-spacing: -0.01em;
-            text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
-        }
-        .header-card .app-subtitle {
-            color: #c9c5bb;
-            margin: 0.45rem 0 0 0;
-            font-weight: 700;
-        }
-        .dataset-note {
-            background: #21211f;
-            border: 1px solid #3b3a36;
-            border-left: 4px solid #788c5d;
-            border-radius: 12px;
-            padding: 0.75rem 0.95rem;
-            margin-bottom: 1rem;
-            color: #ece9df;
-        }
-        .dataset-note p {
-            margin: 0.2rem 0;
-            line-height: 1.45;
-        }
-        .dataset-note b {
-            color: #faf9f5;
-            font-weight: 800;
-        }
-        .dataset-note .dataset-note-muted {
-            color: #cbc7b9;
-        }
-        div[data-testid="stForm"] {
-            background: var(--ant-white);
-            border: 1px solid var(--ant-cloud-light);
-            border-radius: 14px;
-            padding: 1rem 1rem 0.5rem 1rem;
-            box-shadow: 0 1px 2px rgba(20, 20, 19, 0.03);
-            margin-bottom: 1.2rem;
-            color: var(--ant-slate-dark);
-        }
-        div[data-testid="stForm"] label {
-            color: var(--ant-slate-dark);
-        }
-        div[data-baseweb="textarea"] > div {
-            background: linear-gradient(180deg, #f9ede2 0%, #f4eadf 34%, #f0eee6 100%);
-            border: 1px solid #dfc8b4;
-            border-left: 4px solid var(--ant-accent);
-            border-radius: 12px !important;
-            box-shadow: none !important;
-        }
-        div[data-baseweb="textarea"] > div:focus-within {
-            border-color: var(--ant-accent) !important;
-            box-shadow: 0 0 0 1px var(--ant-accent) !important;
-        }
-        .stTextArea textarea {
-            background: transparent !important;
-            border: none !important;
-            color: var(--ant-slate-dark);
-            line-height: 1.55;
-            padding: 0.8rem 0.8rem 0.8rem 0.9rem;
-            font-weight: 500;
-        }
-        .stTextArea textarea::placeholder {
-            color: #7a7268;
-            opacity: 1;
-        }
-        .stFormSubmitButton > button {
-            background: var(--ant-slate-dark);
-            color: var(--ant-ivory-light);
-            border: 1px solid var(--ant-slate-dark);
-            border-radius: 999px;
-            font-weight: 500;
-            padding: 0.55rem 1.1rem;
-        }
-        .stFormSubmitButton > button:hover {
-            background: var(--ant-accent);
-            border-color: var(--ant-accent);
-            color: var(--ant-white);
-        }
-        .stFormSubmitButton > button:focus {
-            box-shadow: 0 0 0 2px rgba(198, 97, 63, 0.25);
-        }
-        .result-card {
-            background: linear-gradient(180deg, #f9ede2 0%, #f4eadf 34%, #f0eee6 100%);
-            border: 1px solid #dfc8b4;
-            border-left: 4px solid var(--ant-accent);
-            border-radius: 14px;
-            padding: 1rem 1.1rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.75rem;
-            color: var(--ant-slate-dark);
-        }
-        .result-card p, .result-card li {
-            line-height: 1.55;
-            color: var(--ant-slate-medium);
-        }
-        .verdict-line {
-            margin: 0.18rem 0;
-            color: var(--ant-slate-medium);
-        }
-        .verdict-label {
-            font-weight: 800;
-            color: var(--ant-slate-dark);
-            letter-spacing: 0.01em;
-        }
-        .verdict-spacer {
-            height: 0.45rem;
-        }
-        [data-testid="stExpander"] {
-            border: 1px solid var(--ant-cloud-light);
-            border-radius: 12px;
-            background: var(--ant-white);
-            overflow: hidden;
-            margin-bottom: 0.6rem;
-            color: var(--ant-slate-dark);
-        }
-        [data-testid="stExpander"] summary {
-            background: var(--ant-ivory-medium);
-        }
-        [data-testid="stCaptionContainer"] {
-            color: var(--ant-cloud-medium);
-        }
-        [data-testid="stExpander"] [data-testid="stCaptionContainer"] {
-            color: var(--ant-slate-light);
-        }
-        [data-testid="stAlert"] {
-            border-radius: 12px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    /* FIX 1: single-line input */
+    .stTextInput > div > div > input {
+        background-color: #1e293b;
+        color: white;
+        border-radius: 12px;
+        border: 1px solid #334155;
+        padding: 12px 16px;
+        font-size: 1rem;
+    }
 
+    .stButton > button {
+        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        border: none;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
 
-def _format_verdict_html(verdict: str) -> str:
-    lines = verdict.splitlines()
-    rendered: list[str] = []
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+    }
 
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            rendered.append("<div class='verdict-spacer'></div>")
-            continue
+    .verdict-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 24px;
+    }
 
-        match = re.match(r"^([A-Z][A-Z\s/-]+:)(.*)$", stripped)
-        if match:
-            label = html.escape(match.group(1))
-            content = html.escape(match.group(2).strip())
-            if content:
-                rendered.append(
-                    f"<div class='verdict-line'><span class='verdict-label'>{label}</span> {content}</div>"
-                )
+    .abstract-card {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 12px;
+        padding: 16px;
+        border-left: 4px solid #3b82f6;
+        margin-bottom: 12px;
+    }
+
+    .pmid-tag {
+        background: #3b82f6;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+
+    h1, h2, h3 { color: #ffffff !important; }
+
+    .verdict-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 14px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 12px;
+    }
+    .badge-supported    { background: rgba(34,197,94,0.15);  color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+    .badge-contradicted { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+    .badge-mixed        { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+    .badge-unknown      { background: rgba(148,163,184,0.15);color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+
+    .citation-badge {
+        background: #3b82f6;
+        color: white;
+        padding: 1px 6px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        margin: 0 2px;
+        vertical-align: middle;
+    }
+
+    /* FIX 2: separate styles for no-contra notice vs actual contra evidence */
+    .no-contra-box {
+        background: rgba(0,0,0,0.2);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin-top: 16px;
+        font-size: 0.88rem;
+        color: #64748b;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .contra-box {
+        background: rgba(239,68,68,0.07);
+        border: 1px solid rgba(239,68,68,0.2);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-top: 16px;
+        font-size: 0.95rem;
+        color: #fca5a5;
+        line-height: 1.6;
+    }
+
+    .conf-dot {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        margin-right: 4px;
+    }
+    .conf-high { background: #4ade80; }
+    .conf-med  { background: #fbbf24; }
+    .conf-low  { background: #ef4444; }
+    .conf-none { background: #475569; }
+
+    .parse-error {
+        background: rgba(239,68,68,0.1);
+        border: 1px solid rgba(239,68,68,0.3);
+        border-radius: 12px;
+        padding: 20px;
+        color: #fca5a5;
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Header ---
+st.title("🔬  RAG")
+st.markdown("### Biomedical Claim Verification Engine")
+
+# FIX 1: single-line text_input, not text_area
+claim = st.text_input(
+    "Enter a biomedical claim to verify:",
+    placeholder="e.g., Omega-3 supplementation reduces symptoms of depression",
+)
+
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    verify_clicked = st.button("Verify Claim")
+
+if verify_clicked and claim:
+    with st.spinner("Analysing claim against SciFact corpus..."):
+        try:
+            results = run_pipeline(claim.strip(), method="hybrid")
+            v_text = results["verdict"]
+
+            # --- Parse structured sections ---
+            verdict_match = re.search(r"VERDICT:\s*([^\n]*)", v_text, re.IGNORECASE)
+            verdict_val = verdict_match.group(1).strip() if verdict_match else ""
+
+            summary_match = re.search(
+                r"SUMMARY:\s*(.*?)(?=SUPPORTING EVIDENCE:|CONTRADICTING EVIDENCE:|CONFIDENCE:|$)",
+                v_text, re.IGNORECASE | re.DOTALL,
+            )
+            summary_val = summary_match.group(1).strip() if summary_match else ""
+
+            supp_match = re.search(
+                r"SUPPORTING EVIDENCE:\s*(.*?)(?=CONTRADICTING EVIDENCE:|CONFIDENCE:|$)",
+                v_text, re.IGNORECASE | re.DOTALL,
+            )
+            supp_val = supp_match.group(1).strip() if supp_match else ""
+
+            contra_match = re.search(
+                r"CONTRADICTING EVIDENCE:\s*(.*?)(?=CONFIDENCE:|$)",
+                v_text, re.IGNORECASE | re.DOTALL,
+            )
+            contra_val = contra_match.group(1).strip() if contra_match else ""
+
+            confidence_match = re.search(r"CONFIDENCE:\s*(.*)", v_text, re.IGNORECASE | re.DOTALL)
+            confidence_val = confidence_match.group(1).strip() if confidence_match else ""
+
+            # FIX 3: detect parse failure — if no structured sections were found at all,
+            # the LLM did not follow the format. Show a clear error instead of
+            # dumping raw text into the UI.
+            parse_ok = bool(verdict_val or summary_val or supp_val)
+            if not parse_ok:
+                import textwrap
+                st.markdown(textwrap.dedent("""
+                <div class="parse-error">
+                    <strong>⚠ Response format error</strong><br>
+                    The model did not return a structured response. Please try again.
+                    If this keeps happening, check that the structured prompt is active in config.
+                </div>
+                """), unsafe_allow_html=True)
+                st.stop()
+
+            # --- Inline citation badges ---
+            def make_citation_badges(text: str) -> str:
+                """Replace [1], [2,3] etc. with coloured badge spans."""
+                def replacer(m):
+                    nums = re.findall(r"\d+", m.group(1))
+                    return " ".join(f'<span class="citation-badge">{n}</span>' for n in nums)
+                escaped = html.escape(text)
+                return re.sub(r"\[([0-9\s,]+)\]", replacer, escaped).replace("\n", "<br>")
+
+            summary_html   = make_citation_badges(summary_val)
+            supp_html      = make_citation_badges(supp_val)
+
+            # --- Collect cited indices so we know which sources were actually used ---
+            full_text = f"{summary_val} {supp_val} {contra_val}"
+            used_indices: set[int] = set()
+            for m in re.finditer(r"\[([0-9\s,]+)\]", full_text):
+                for n in re.findall(r"\d+", m.group(1)):
+                    used_indices.add(int(n))
+
+            # FIX 4: if the LLM cited nothing with [N] notation, treat all retrieved
+            # sources as used rather than marking them all excluded.
+            if not used_indices:
+                used_indices = set(range(1, len(results["retrieved"]) + 1))
+
+            # --- Verdict badge ---
+            v_lower = verdict_val.lower()
+            if "support" in v_lower:
+                badge_class, icon = "badge-supported", "✓"
+            elif "contradict" in v_lower:
+                badge_class, icon = "badge-contradicted", "✕"
+            elif any(w in v_lower for w in ("mix", "contest", "insufficient")):
+                badge_class, icon = "badge-mixed", "⚖"
             else:
-                rendered.append(
-                    f"<div class='verdict-line'><span class='verdict-label'>{label}</span></div>"
-                )
-        else:
-            rendered.append(f"<div class='verdict-line'>{html.escape(stripped)}</div>")
+                badge_class, icon = "badge-unknown", "?"
 
-    return "".join(rendered)
+            # --- Confidence dots ---
+            c_lower = confidence_val.lower()
+            if "high" in c_lower:
+                dots = '<span class="conf-dot conf-high"></span>' * 4
+            elif "medium" in c_lower or "moderate" in c_lower:
+                dots = ('<span class="conf-dot conf-med"></span>' * 2 +
+                        '<span class="conf-dot conf-none"></span>' * 2)
+            elif "low" in c_lower:
+                dots = ('<span class="conf-dot conf-low"></span>' +
+                        '<span class="conf-dot conf-none"></span>' * 3)
+            else:
+                dots = '<span class="conf-dot conf-none"></span>' * 4
 
+            # --- Supporting evidence block (only if non-empty and not "none") ---
+            import textwrap
+            supp_block = ""
+            if supp_val and "none" not in supp_val.lower():
+                supp_block = textwrap.dedent(f"""
+                <div style="font-size:0.95rem;line-height:1.6;color:#cbd5e1;margin-top:16px;">
+                    <strong>Supporting evidence:</strong> {supp_html}
+                </div>
+                """)
 
-def _render_retrieved_docs(retrieved: list[dict[str, Any]]) -> None:
-    st.subheader("Retrieved evidence")
-    if not retrieved:
-        st.info("No abstracts were returned.")
-        return
+            # FIX 5: contradicting evidence has its own distinct block.
+            # "None found" → quiet grey notice.  Actual text → red-tinted box.
+            contra_block = ""
+            if not contra_val or "none" in contra_val.lower():
+                contra_block = textwrap.dedent("""
+                <div class="no-contra-box">
+                    ℹ No contradicting evidence found among the retrieved abstracts.
+                </div>
+                """)
+            else:
+                contra_html = make_citation_badges(contra_val)
+                contra_block = textwrap.dedent(f"""
+                <div class="contra-box">
+                    <strong>Contradicting evidence:</strong> {contra_html}
+                </div>
+                """)
 
-    for i, doc in enumerate(retrieved, start=1):
-        title = doc.get("title", "Untitled")
-        pmid = doc.get("id", "N/A")
-        score = doc.get("score")
-        rerank_score = doc.get("rerank_score")
-        with st.expander(f"{i}. PMID {pmid} — {title}", expanded=False):
-            details: list[str] = []
-            if isinstance(score, (int, float)):
-                details.append(f"retrieval={score:.4f}")
-            if isinstance(rerank_score, (int, float)):
-                details.append(f"rerank={rerank_score:.4f}")
-            if details:
-                st.caption(" | ".join(details))
-            st.write(doc.get("text", ""))
+            # --- Render verdict card ---
+            verdict_card_html = f"""
+<div class="verdict-card">
+<div class="verdict-badge {badge_class}">
+<span style="margin-right:6px;">{icon}</span>
+{html.escape(verdict_val)}
+</div>
+<div style="font-size:0.8rem;letter-spacing:1px;color:#94a3b8;margin-top:12px;margin-bottom:4px;text-transform:uppercase;">Claim</div>
+<div style="font-size:1.2rem;font-weight:600;margin-bottom:20px;color:white;">"{html.escape(claim.strip())}"</div>
+<div style="font-size:1.05rem;line-height:1.6;color:#f1f5f9;">{summary_html}</div>
+{supp_block}
+{contra_block}
+<hr style="opacity:0.1;margin:20px 0;">
+<div style="display:flex;align-items:center;color:#94a3b8;font-size:0.9rem;">
+<span style="margin-right:10px;">Confidence</span>
+<div style="display:flex;align-items:center;margin-right:10px;">{dots}</div>
+<span style="color:#cbd5e1;">{html.escape(confidence_val)}</span>
+</div>
+</div>
+"""
+            # Ensure absolutely no leading spaces remain to prevent Markdown code block bugs
+            verdict_card_html = re.sub(r'^[ \t]+', '', verdict_card_html, flags=re.MULTILINE)
+            st.markdown(verdict_card_html, unsafe_allow_html=True)
 
+            # --- Evidence sources ---
+            st.markdown(
+                f"<div style='font-size:0.75rem;font-weight:600;color:#94a3b8;"
+                f"margin-bottom:12px;letter-spacing:1px;'>"
+                f"SOURCES RETRIEVED ({len(results['retrieved'])})</div>",
+                unsafe_allow_html=True,
+            )
 
-def main() -> None:
-    st.set_page_config(page_title="Equipoise", page_icon="E", layout="centered")
-    _inject_styles()
+            for i, res in enumerate(results["retrieved"]):
+                idx = i + 1
+                title = res.get("title", f"Source {idx}")
+                pmid  = res.get("id", "—")
+                body  = res.get("text", "")
 
-    st.markdown(
-        """
-        <div class='header-card'>
-            <h1 class='header-title'>Equipoise</h1>
-            <p class='app-subtitle'>Biomedical claim verification with balanced evidence</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        """
-        <div class='dataset-note'>
-            <p><b>Data source:</b> AllenAI SciFact</p>
-            <p><b>Freshness:</b> Static benchmark snapshot (not live-updating)</p>
-            <p><b>Upstream last update:</b> 2021-01-26 02:28:59 UTC</p>
-            <p class='dataset-note-muted'>This app uses a fixed SciFact snapshot until a newer dataset is manually downloaded.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+                if idx in used_indices:
+                    # FIX 6: show the actual paper title, not "Evidence #N"
+                    with st.expander(f"[{idx}]  {title[:90]}{'...' if len(title)>90 else ''}", expanded=False):
+                        st.markdown(f"""
+                        <div class="abstract-card">
+                            <p>
+                                <span class="pmid-tag">PMID {pmid}</span>
+                                <span style="margin-left:10px;font-weight:600;">{html.escape(title)}</span>
+                            </p>
+                            <p style="font-size:0.9rem;line-height:1.5;opacity:0.9;">
+                                {html.escape(body)}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style="padding:10px 16px;border-radius:8px;
+                                background:rgba(0,0,0,0.15);
+                                border:1px solid rgba(255,255,255,0.04);
+                                margin-bottom:8px;display:flex;
+                                align-items:center;color:#475569;">
+                        <span style="margin-right:10px;opacity:0.4;">○</span>
+                        <span style="font-size:0.85rem;">
+                            [{idx}] {html.escape(title[:80])} — not cited in verdict
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    if RESULT_KEY not in st.session_state:
-        st.session_state[RESULT_KEY] = None
-    if ERROR_KEY not in st.session_state:
-        st.session_state[ERROR_KEY] = None
+        except Exception as e:
+            st.error(f"Pipeline error: {e}")
 
-    with st.form("claim_form", clear_on_submit=False):
-        claim = st.text_area(
-            "Enter a biomedical claim",
-            placeholder="Example: Vitamin D supplementation improves depression symptoms.",
-            height=120,
-        )
-        analyze_clicked = st.form_submit_button("Analyze claim", type="primary")
+elif verify_clicked and not claim:
+    st.warning("Please enter a claim to verify.")
 
-    if analyze_clicked:
-        if not claim.strip():
-            st.session_state[ERROR_KEY] = "Please enter a claim before running."
-            st.session_state[RESULT_KEY] = None
-        else:
-            with st.spinner("Analyzing claim..."):
-                try:
-                    response = run_claim(claim)
-                    st.session_state[RESULT_KEY] = response["output"]
-                    st.session_state[ERROR_KEY] = None
-                except Exception as error:
-                    st.session_state[ERROR_KEY] = f"Pipeline failed: {error}"
-                    st.session_state[RESULT_KEY] = None
-
-    if st.session_state[ERROR_KEY]:
-        st.error(st.session_state[ERROR_KEY])
-        return
-
-    output = st.session_state[RESULT_KEY]
-    if not output:
-        st.caption("Try a claim to generate verdict and supporting evidence.")
-        return
-
-    st.subheader("Verdict")
-    verdict_html = _format_verdict_html(output.get("verdict", "No verdict generated."))
-    st.markdown(
-        f"<div class='result-card'>{verdict_html}</div>",
-        unsafe_allow_html=True,
-    )
-
-    reformulated = output.get("reformulated_query")
-    if reformulated:
-        st.caption(f"Reformulated query: {reformulated}")
-
-    _render_retrieved_docs(output.get("retrieved", []))
-
-
-if __name__ == "__main__":
-    main()
+# FIX 7: removed "Equipoise" from footer
+st.markdown("<hr style='opacity:0.1;margin-top:50px;'>", unsafe_allow_html=True)
+st.markdown(
+    "<p style='text-align:center;opacity:0.4;font-size:0.85rem;'>"
+    "Biomedical Claim Verification · SciFact Dataset</p>",
+    unsafe_allow_html=True,
+)

@@ -5,7 +5,8 @@ RAGAS evaluation for Equipoise RAG pipeline.
 Computes: faithfulness, answer_relevancy, context_precision, context_recall.
 
 Evaluator LLM: Groq llama-3.3-70b-versatile via OpenAI-compatible client.
-Compatible with RAGAS 0.2.x API (instantiated metric objects, llm_factory).
+Supports RAGAS evaluate() across 0.2.x-0.4.x by selecting metric objects
+compatible with the installed API.
 
 Usage as module:
     from src.ragas_eval import evaluate_ragas
@@ -19,6 +20,7 @@ import os
 import sys
 import json
 import time
+import math
 import logging
 from typing import Optional
 
@@ -35,16 +37,37 @@ logger = logging.getLogger(__name__)
 
 try:
     from datasets import Dataset
+    # pyrefly: ignore [missing-import]
     from ragas import evaluate
-    from ragas.metrics.collections import (
-        Faithfulness,
-        AnswerRelevancy,
-        ContextPrecision,
-        ContextRecall,
+    from ragas.llms import llm_factory, LangchainLLMWrapper
+    from ragas.embeddings import HuggingFaceEmbeddings as ModernRagasHFEmbeddings
+    from langchain_community.embeddings import (
+        HuggingFaceEmbeddings as LangchainHFEmbeddings,
     )
-    from ragas.llms import llm_factory
-    from ragas.embeddings import HuggingFaceEmbeddings as RagasHFEmbeddings
     from openai import OpenAI
+
+    # RAGAS 0.4.x evaluate() validates legacy Metric objects.
+    # Prefer these when present; fallback to collections constructors.
+    try:
+        from ragas.metrics._faithfulness import faithfulness as legacy_faithfulness
+        from ragas.metrics._answer_relevance import (
+            answer_relevancy as legacy_answer_relevancy,
+        )
+        from ragas.metrics._context_precision import (
+            context_precision as legacy_context_precision,
+        )
+        from ragas.metrics._context_recall import context_recall as legacy_context_recall
+
+        USE_LEGACY_EVAL_METRICS = True
+    except Exception:
+        from ragas.metrics.collections import (
+            Faithfulness,
+            AnswerRelevancy,
+            ContextPrecision,
+            ContextRecall,
+        )
+
+        USE_LEGACY_EVAL_METRICS = False
 except ImportError as e:
     print(
         f"Missing dependency: {e}\n"
@@ -56,9 +79,9 @@ except ImportError as e:
 # Constants
 # ---------------------------------------------------------------------------
 
-RAGAS_LLM_MODEL   = "llama-3.3-70b-versatile"
+RAGAS_LLM_MODEL   = "gemini-2.0-flash"
 RAGAS_EMBED_MODEL  = "BAAI/bge-base-en-v1.5"
-RAGAS_TIMEOUT     = 60
+RAGAS_TIMEOUT     = 180
 RAGAS_MAX_RETRIES = 2
 
 THRESHOLDS = {
@@ -75,19 +98,35 @@ THRESHOLDS = {
 
 def _build_ragas_llm():
     """
-    Build a RAGAS-compatible LLM using Groq's OpenAI-compatible endpoint.
-    RAGAS 0.2.x uses llm_factory with an OpenAI client — Groq works via base_url override.
+    Build a RAGAS-compatible LLM.
+    Uses ChatGoogleGenerativeAI if GOOGLE_API_KEY is available,
+    else falls back to Groq's OpenAI-compatible endpoint.
     """
-    api_key = os.getenv("GROQ_API_KEY")
+    # google_api_key = os.getenv("GOOGLE_API_KEY")
+    # if google_api_key:
+    #     from langchain_google_genai import ChatGoogleGenerativeAI
+    #     gemini = ChatGoogleGenerativeAI(
+    #         model=RAGAS_LLM_MODEL, 
+    #         google_api_key=google_api_key,
+    #         max_retries=3
+    #     )
+    #     return LangchainLLMWrapper(gemini)
+
+    api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        raise EnvironmentError(
-            "GROQ_API_KEY not found in environment. Check your .env file."
-        )
-    groq_client = OpenAI(
-        api_key=api_key,
-        base_url="https://api.groq.com/openai/v1",
+        raise EnvironmentError("OPENROUTER_API_KEY not found in .env")
+    
+    from langchain_openai import ChatOpenAI
+    
+    # OpenRouter supports 'n > 1' and has much higher limits for Llama 3.3 70B
+    openrouter_llm = ChatOpenAI(
+        openai_api_base="https://openrouter.ai/api/v1",
+        openai_api_key=api_key,
+        model_name="meta-llama/llama-3.3-70b-instruct",
+        max_tokens=8192,
+        temperature=0,
     )
-    return llm_factory(RAGAS_LLM_MODEL, client=groq_client)
+    return LangchainLLMWrapper(openrouter_llm)
 
 
 def _build_ragas_embeddings():
@@ -95,9 +134,19 @@ def _build_ragas_embeddings():
     Reuse BAAI/bge-base-en-v1.5 for answer_relevancy embedding scoring.
     Same model as the retriever — already cached on disk, no second download.
     """
-    return RagasHFEmbeddings(
+    device = _detect_device()
+
+    if USE_LEGACY_EVAL_METRICS:
+        # Legacy answer_relevancy expects embed_query/embed_documents methods.
+        return LangchainHFEmbeddings(
+            model_name=RAGAS_EMBED_MODEL,
+            model_kwargs={"device": device},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+
+    return ModernRagasHFEmbeddings(
         model=RAGAS_EMBED_MODEL,
-        device=_detect_device(),
+        device=device,
         normalize_embeddings=True,
     )
 
@@ -160,23 +209,23 @@ def evaluate_ragas(
         "contexts": [contexts],
     }
 
-    # Instantiate metric objects — RAGAS 0.2.x requires objects, not module-level singletons
-    metrics = [
-        Faithfulness(llm=ragas_llm),
-        AnswerRelevancy(llm=ragas_llm, embeddings=ragas_embeddings),
-    ]
-
+    metrics, eval_kwargs = _build_metrics_for_evaluate(
+        ragas_llm=ragas_llm,
+        ragas_embeddings=ragas_embeddings,
+        with_ground_truth=(ground_truth is not None),
+    )
     if ground_truth is not None:
         data["ground_truth"] = [ground_truth]
-        metrics += [
-            ContextPrecision(llm=ragas_llm),
-            ContextRecall(llm=ragas_llm),
-        ]
 
     dataset = Dataset.from_dict(data)
 
     try:
-        result = evaluate(dataset=dataset, metrics=metrics)
+        result = evaluate(
+            dataset,
+            metrics=metrics,
+            raise_exceptions=False,
+            **eval_kwargs
+        )
     except Exception as e:
         raise RuntimeError(f"RAGAS evaluation failed: {e}") from e
 
@@ -188,10 +237,32 @@ def evaluate_ragas(
 # Result parsing
 # ---------------------------------------------------------------------------
 
+def _build_metrics_for_evaluate(ragas_llm, ragas_embeddings, with_ground_truth: bool):
+    """
+    Build metric objects compatible with ragas.evaluate() for the installed version.
+
+    Returns:
+        tuple[list, dict]: (metrics, evaluate_kwargs)
+    """
+    if USE_LEGACY_EVAL_METRICS:
+        metrics = [legacy_faithfulness, legacy_answer_relevancy]
+        if with_ground_truth:
+            metrics += [legacy_context_precision, legacy_context_recall]
+        return metrics, {"llm": ragas_llm, "embeddings": ragas_embeddings}
+
+    metrics = [
+        Faithfulness(llm=ragas_llm),
+        AnswerRelevancy(llm=ragas_llm, embeddings=ragas_embeddings),
+    ]
+    if with_ground_truth:
+        metrics += [ContextPrecision(llm=ragas_llm), ContextRecall(llm=ragas_llm)]
+    return metrics, {}
+
+
 def _parse_ragas_result(result, ground_truth_provided: bool) -> dict:
     """
     Extract scalar scores from a RAGAS EvaluationResult.
-    result behaves like a dict keyed by metric name.
+    Supports both dict-like legacy results and EvaluationResult objects.
     """
     scores = {}
 
@@ -200,13 +271,9 @@ def _parse_ragas_result(result, ground_truth_provided: bool) -> dict:
         metric_keys += ["context_precision", "context_recall"]
 
     for key in metric_keys:
-        raw = result.get(key, None)
-        if raw is None:
-            scores[key] = None
-        elif isinstance(raw, (list, tuple)):
-            scores[key] = float(raw[0])
-        else:
-            scores[key] = float(raw)
+        raw = _get_metric_raw_value(result, key)
+        value = _to_scalar_score(raw)
+        scores[key] = value
 
     passes = [
         value >= THRESHOLDS[key]
@@ -218,6 +285,55 @@ def _parse_ragas_result(result, ground_truth_provided: bool) -> dict:
     scores["metric_count"]    = len([v for v in scores.values() if isinstance(v, float)])
 
     return scores
+
+
+def _get_metric_raw_value(result, key: str):
+    """
+    Fetch a metric value from both legacy dict-like and newer EvaluationResult shapes.
+    """
+    if isinstance(result, dict):
+        return result.get(key, None)
+
+    if hasattr(result, "get"):
+        try:
+            return result.get(key, None)
+        except Exception:
+            pass
+
+    # EvaluationResult implements __getitem__(key) -> list[score]
+    try:
+        return result[key]
+    except Exception:
+        pass
+
+    # Fallback to list-of-dicts payload if present.
+    rows = getattr(result, "scores", None)
+    if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+        return rows[0].get(key, None)
+
+    return None
+
+
+def _to_scalar_score(raw):
+    """
+    Normalize raw RAGAS metric outputs into float or None.
+    """
+    if raw is None:
+        return None
+
+    if isinstance(raw, (list, tuple)):
+        if not raw:
+            return None
+        raw = raw[0]
+
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+
+    if math.isnan(value):
+        return None
+    return value
 
 
 # ---------------------------------------------------------------------------
